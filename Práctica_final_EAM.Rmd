@@ -1,0 +1,887 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+------------------------------------------------------------------------
+
+```{=latex}
+    \begin{sffamily}
+    \begin{center}
+%        \begin{figure} %incluimos el logotipo de la Universidad
+%            \makebox[\textwidth][c]{\includegraphics[width=16cm]{C:/Users/elsabuenoalonso/Desktop/apuntes/master/año 1/2o cuatri/1er subcuatri/Errores ajenos a la estimación/práctica final/logo ucm.png}}
+%      \end{figure}
+        \vspace{2.5cm}
+        \begin{Large}
+            Máster EMOS\\           
+             2023\\ %Indica el curso académico
+            \vspace{2cm}        
+            \textsl{Entrega EAM}
+            \bigskip
+            
+        \end{Large}
+            {\Huge ``Práctica Estimación de la varianza, Cálculo del tamaño muestral y EjercicioS Teóricos''}\\
+            \vspace*{0.5cm}
+            \rule{10.5cm}{0.1mm}\\
+            \vspace*{0.9cm}
+            {\LARGE Elsa Bueno Alonso y María Alejandra Ponce López}\\ 
+            \vspace*{1cm}
+        \begin{Large}
+            Profesora\\
+            Marta Baldomero Naranjo\\
+            20 de ABRIL de 2023\\
+        \end{Large}
+    \end{center}
+    \vfill
+    \color{black}
+    \end{sffamily}
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+\clearpage
+
+```{=latex}
+\begin{center}
+\textbf{Estimación de la varianza}
+\end{center}
+```
+**Ejercicio 1** *Contextualiza un problema con datos reales (en tal caso
+indica la fuente) o ficticios, donde se realice un muestreo aleatorio
+simple. Calcula la estimación de la media de una variable y estima la
+varianza de dicho estimador con las técnicas de jacknife y bootstrap
+(100 replicaciones). Compara los resultados.*
+
+Para el primer ejercicio, se ha seleccionado la base de datos "smoke",
+de la librería wooldrige. Son datos para 807 individuos varones
+residentes en distintos estados americanos en el año 1979. Las variables
+que están en este fichero son:
+
+1.  educ: el número de años escolarizado.
+2.  cigpric: el precio de un paquete de cigarrillos en centavos.
+3.  white: variable ficticia que es igual a la unidad si el individuo es
+    blanco, cero en otro caso.
+4.  age: edad del individuo en años.
+5.  income: renta familiar anual en miles de dólares.
+6.  cigs: el número medio de cigarrillos fumados por día.
+7.  restaurn: variable ficticia que es igual a la unidad si una persona
+    reside en un estado donde hay restricciones al tabaquismo en los
+    restaurantes, cero en otro caso.
+8.  lincome: logaritmo de la renta familiar anual en miles de dólares.
+9.  agesq: edad del individuo en años elevado al cuadrado.
+10. lcigpric: logaritmo del precio de un paquete de cigarrillos en
+    centavos.
+
+```{r}
+#install.packages("wooldridge")
+library("wooldridge")
+data("smoke")
+summary(smoke)
+```
+
+Si suponemos que la base de datos es un censo de la población, tomaremos
+una muestra al azar de dicha población y de tamaño $n=100$.
+
+Se va a trabajar con la variable de "cigs" que representa el número de
+cigarrillos fumados al día.
+
+**Apartado a)** *Calcular el estimador de la media para una variable*
+
+Lo primero será calcular el tamaño de la población y de la muestra, la
+cual tendrá el tamaño $n=100$:
+
+```{r}
+N=length(smoke$cigs)
+N
+n=100
+```
+
+Se va a obtener una muestra aleatoria simple sin reemplazamiento de
+tamaño $n=100$:
+
+```{r}
+set.seed(123)
+indices=sample(1:N,n)
+indices 
+muestra=smoke[indices,] 
+```
+
+Se va a instalar el paquete survey, el cual contiene la función svymean.
+
+```{r}
+#install.packages("survey")
+library (survey)
+```
+
+Con la función svydesign, se indica el tipo de diseño que se ha
+conseguido para obtener la muestra. En este caso, es un m.a.s sin
+reemplazamiento.
+
+```{r}
+muestra_mas=svydesign(id=~1, data= muestra, fpc=~rep(N,n)) 
+```
+
+A continuación, se estima la media poblacional de la variable
+cigarrillos/día a partir de la muestra. El estimador de la media
+poblacional es: $$\hat{X}_{HT}=\frac{1}{n}\sum_{k\in s} x_k=\bar{x}_S$$
+
+Para ello, se aplica la función svymean para obtener una estimación de
+la media poblacional a partir de esa muestra.
+
+```{r}
+media=svymean(~cigs, muestra_mas)
+media
+```
+
+*Resultado:* Se ha obtenido que la estimación de la media poblacional de
+cigarrillos al día es de aproximadamente 9 cigarrillos.
+
+Debido a que suponemos que se tratra de un censo, se va a calcular el
+valor medio real de la población.
+
+```{r}
+(1/N)*sum(smoke$cigs)
+```
+
+*Resultado:*Se observa que en este caso, la estimación obtenida es
+prácticamente igual al verdadero valor de la media poblacional y por
+tanto, la varianza será pequeña.
+
+**Conclusiones**
+
+En conclusión, a partir de una población (base de datos smoke) se ha
+obtenido una muestra aletoria simple sin reemplazamiento (m.a.s.). Para
+dicha muesta se ha calculado la estimación de la media poblacional cuyo
+valor sea ha estimado en, aproximadamente, 9 cigarrillos al día.
+
+**Apartado b)** *Estima la varianza del estimador con jackknife y
+bootstrap*
+
+Para estimar la varianza del estimador de la media poblacional en el
+muestreo aleatorio simple, vamos a utilizar como estimador de la media
+poblacional el parámetro $$\bar{x}_S=\hat{\theta}$$
+
+El cálculo de la estimación de la varianza de $$\hat{\theta}$$ se puede
+hacer mediante los métodos de Jackknife y Bootstrap.
+
+*I. Método Jackknife.*
+
+El estimador de la varianza se calcula como:
+$$\hat{V}_{JK}(\hat{\theta})=
+\frac{n-1}{n}*\sum_{j=1}^{n} (\hat{\theta}_j-\hat{\theta}_{(.)})^2$$
+donde $$\hat{\theta}_{(.)}=\frac{1}{n}*\sum_{j=1}^{n} \hat{\theta}_j$$
+
+```{r}
+set.seed(1)
+mas_jkk=as.svrepdesign(muestra_mas,type="JK1") 
+mean_jkk_mas=svymean(~cigs, mas_jkk)
+mean_jkk_mas
+```
+
+Vemos que el resultado obtenido es el mismo que la estimación de la media por 
+el método exacto. 
+Al ser *SE* la desviación típica del estimador (error de muestreo
+o error estándar del estimador), para obtener la estimación de la
+varianza del estimador, elevamos el resultado al cuadrado:
+
+```{r}
+est_var_est_jk_mas=SE(mean_jkk_mas)^2
+est_var_est_jk_mas
+```
+
+Se trata de una estimación por el hecho de que estamos tratando datos
+muestrales. En este ejemplo, donde suponemos que los datos son
+poblacionales, se podría calcular la varianza del estimador.
+
+*II. Método Boortstrap:*
+
+El estimador de la varianza se calcula como:
+$$\hat{V}_{BOOT}(\hat{\theta})=
+\frac{1}{B-1}*\sum_{b=1}^{B} (\hat{\theta}_b^*-\hat{\theta}^*)^2$$
+donde $$\hat{\theta}^*=\frac{1}{B}*\sum_{b=1}^{B} \hat{\theta}_b^*$$
+
+```{r}
+set.seed(1)
+mas_bt=as.svrepdesign(muestra_mas,type="bootstrap", replicates=100) 
+mean_bt_mas=svymean(~cigs, mas_bt)
+mean_bt_mas
+```
+
+Y calculamos la estimación de la varianza del estimador de la misma
+forma que Jackknife:
+
+```{r}
+est_var_est_bt_mas=SE(mean_bt_mas)^2
+est_var_est_bt_mas
+```
+
+*Resultado:* Se observa que en el método Bootstrap, al asumir una no
+normalidad en las variables, obtenemos un estimador de la varianza del 
+estimador menor que mediante el método exacto o Jackknife.
+
+**Conclusiones**
+
+En conclusión, a partir de una población (base de datos smoke) se ha
+obtenido una muestra aletoria simple sin reemplazamiento (m.a.s.). Para
+dicha muestra se ha calculado la estimación de la varianza del estimador 
+mediante dos métodos diferentes, obteniendo un mejor resultado, es decir, 
+una menor estimación de la varianza del estimador con el método Bootstrap. 
+Esto es debido a que, mediante este método, se asume una no normalidad en las 
+variables, por lo que las estimaciones son más precisas. 
+
+**Ejercicio 2** *Contextualiza un problema con datos reales (en tal caso
+indica la fuente) o ficticios, donde se realice un muestreo
+estratificado. Calcula la estimación de la media de una variable y
+estima la varianza de dicho estimador con las técnicas: Semimuestras
+reiteradas, jacknife y bootstrap (100 replicaciones). Compara los
+resultados.*
+
+```{r}
+#install.packages("wooldridge")
+library("wooldridge")
+data("affairs")
+summary(affairs)
+```
+
+Para el segundo ejercicio, se ha seleccionado la base de datos affairs,
+de la librería wooldrige. Esta base de datos contiene 601 observaciones
+sobre 19 variables, siendo las más importantes:
+
+1.  id: identifier
+2.  male: =1 if male
+3.  age: in years
+4.  yrsmarr: years married
+5.  kids: =1 if have kids
+6.  relig: 5 = very relig., 4 = somewhat, 3 = slightly, 2 = not at all,
+    1 = anti
+7.  educ: years schooling
+8.  occup: occupation, reverse Hollingshead scale
+9.  ratemarr: 5 = vry hap marr, 4 = hap than avg, 3 = avg, 2 = smewht
+    unhap, 1 = vry unhap
+10. naffairs: number of affairs within last year
+11. affair: =1 if had at least one affair
+
+Estas observaciones pertenecen a una encuesta realizada por la revista
+"Psychology Today" y cuyos datos fueron utilizados por un profesor de la
+Universidad de Yale. Las variables con las que vamos a trabajar en este
+segundo ejercicio son "naffairs" y "ratemarr" como variables
+cuantitativa y cualitativa, respectivamente.
+
+La primera nos indica el número de aventuras extramatrimoniales tenidas
+a lo largo del año anterior, mientras que la segunda hace referencia a
+cómo valora el sujeto entrvistado su matrimonio. Al ser la variable
+"ratemarr" una variable cualitativa, está dividida en 5 estratos,
+indicando el 5 un matrimonio muy feliz y el 1 un matrimonio infeliz.
+
+Vamos a crear una nueva variable N que almacenará, junto al elemento, el
+tamaño de su estrato:
+
+```{r}
+#Previamente, eliminamos las columnas de las variables que no necesitamos con 
+#el fin de poder visualizar mejor la información para la práctica:
+affairs1=affairs[,-c(1,2,3,4,5,6,7,8,11,12,13,14,15,16,17,18,19)] 
+#si ponemos "," estamos indicando que no modifique las filas
+affairs1
+
+#Para saber cuántos sujetos hay para cada estrato, partiendo de la variable 
+#"ratemarr":
+table(affairs1$ratemarr)
+```
+
+Una vez realizados los filtros necesarios, hemos llegado al tamaño de
+cada estrato para la variable "ratemarr":
+
+1.  Hay 16 sujetos que viven en un matrimonio infeliz.
+
+2.  66 sujetos consideran su matrimonio como un poco infeliz.
+
+3.  93 sujetos dicen vivir contentos en su matrimonio.
+
+4.  194 sujetos consideran su matirmonio como feliz.
+
+5.  Finalmente, 232 sujetos viven en un matirmonio muy feliz.
+
+A diferencia del ejercicio anterior, en este caso, vamos a suponer que nuestra
+base de datos es una muestra, por lo que el los tamaños obtenidos en el paso 
+anterior serían los relativos a la muestra. 
+
+Hay que tener en cuenta que, para el método de las semimuestras reiteradas, 
+vamos a partir del supuesto general en el que de la muestra se van a seleccionar
+submuestras tamaño $$\frac{n}{2}$$, por lo que $$n$$ debe ser un número par.
+En este caso, como el estrato 3 cuenta con 93 observaciones, vamos a eliminar 
+un elemento de dicho estrato:
+
+```{r}
+#Quitamos la observación 214 (elegida al azar):
+library(dplyr)
+affairs2 = slice(affairs1, -214)
+table(affairs2$ratemarr)
+```
+
+Ahora cada estrato cuenta con un tamaño par. 
+
+Vamos a suponer que el tamaño poblacional de cada estrato es el tamaño 
+muestral multiplicado por 200000. 
+
+Para ello vamos a crear una nueva columna con el tamaño de cada estrato,
+lo cual va a facilitar cálculos más adelante:
+
+```{r}
+affairs2$N =NA #así estamos creando una nueva columna con datos vacíos.
+summary(affairs2)
+
+#para rellenar la columna con información:
+N1_t=16*200000
+N2_t=66*200000
+N3_t=92*200000
+N4_t=194*200000
+N5_t=232*200000
+
+#Ahora vamos a asignar a cada elemento su correspondiente tamaño de la 
+#población:
+affairs2$N[affairs2$ratemarr==1]=N1_t
+affairs2$N[affairs2$ratemarr==2]=N2_t
+affairs2$N[affairs2$ratemarr==3]=N3_t
+affairs2$N[affairs2$ratemarr==4]=N4_t
+affairs2$N[affairs2$ratemarr==5]=N5_t
+
+#Para comprobar que está bien hecho, vamos a imprimir de forma aleatoria 
+#alguno de los elementos:
+affairs2[7,]
+affairs2[221,]
+affairs2[497,]
+```
+
+
+**Apartado a)** *Calcular el estimador de la media para una variable*
+
+En primer lugar, generamos el diseño para el muestreo aleatorio
+estratificado, para lo que se va a instalar el paquete survey, el cual
+contiene la función svymean (cálculo de la media) y svydesign (indicamos
+el diseño para la muestra).
+
+```{r}
+#install.packages("survey")
+library(survey)
+mae_affairs2=svydesign(id=~1,strata=~ratemarr,data=affairs2,fpc=~N)
+mae_affairs2
+
+#El argumento id será 1 al no haber conglomerados.
+#El argumento strata indica la variable que define los estratos en la muestra, 
+#en este caso, la valoración del matrimonio.
+#El argumento data identifica la base de datos (affairs1)
+#El argumento fpc indica que el muestreo se hace SIN reemplazamiento y a su 
+#vez identifica el tamaño de la poblacion asociado a cada estrato. 
+
+```
+
+A continuación, se estima la media poblacional de la variable "número de
+aventuras extramatrimoniales tenidas en el último año" a partir de la
+muestra. El estimador de la media poblacional para el total en un
+muestreo estratificado es:
+$$\hat{\bar{X}}=\sum_{h=1}^L (W_h * \bar{X_h})$$ Para ello, se utiliza
+el comando svymean:
+
+```{r}
+media_pobl_mae=svymean(~naffairs, design = mae_affairs2)
+media_pobl_mae
+```
+
+*Resultado:* Se estima que, de forma media, el número de aventuras
+extramatrimoniales tenidas a lo largo del año anterior es de 1'46, es decir, 
+cada sujeto a tenido, de media, 1 o 2 aventuras extramatrimoniales. El error 
+de muestreo o error estándar del estimador es de 0.1288 aventuras 
+extramatrimoniales, es decir, si extrapolamos los resultados obtenidos en la 
+muestra a la población, cometeremos un error de 0.13 aventuras 
+extramatrimoniales en la media poblacional.
+
+Si queremos evaluar esta misma variable, pero para los diferentes
+estratos, tenemos que utilizar el comando svyby. 
+El estimador de la media poblacional en un muestreo estratificado para cada 
+uno de los estratos:
+$$\hat{\bar{X_h}}=\frac{1}{N_h} *\sum_{i=1}^{N_h} ({X_{h_i}})$$
+
+```{r}
+mae_estrato=svyby(~naffairs, by=~ratemarr, design = mae_affairs2, FUN=svymean)
+mae_estrato
+#En primer lugar se indica que la variable objeto de estudio, es decir, el 
+#número de aventuras extramatrimoniales
+#by determina la variable que indica los estratos (valoración del matrimonio)
+#desing indica el diseño muestral
+#FUN indicamos que queremos obtener la media para cada estrato
+```
+
+*Resultado:* Se estima que, entre aquellos sujetos entrevistados que
+consideran tener un matirmonio muy infeliz, el número medio de aventuras
+extraterritoriales tenidas en el año anterior es de, aproximadamente, 4; 
+mientras que, entre, aquellos que se consideran vivir en un matrimonio muy 
+feliz, esta media disminuye hasta una sola aventura, de forma aproximada. 
+En el momento de extrapolar los resultados a la pobalción, se podrán cometer 
+errores de 1.29 aventuras y 0.16 para aquellos matrimonios que no son felices
+y para aquellos que sí lo son, respectivamente.
+Como era de esperar, a mayor valoración del matrimonio, menor es el número medio
+de aventuras extramatrimoniales; y viceversa. Sin embargo, es curioso destacar
+que entre aquellos sujetos que valoran su matrimonio como algo infeliz tiene
+un mayor número de aventuras extramatrimoniales que los sujetos que consideran
+tener un matrimonio muy infeliz.
+
+**Apartado b)** *Estima la varianza del estimador con jackknife y
+bootstrap*
+
+Para estimar la varianza del estimador de la media poblacional en el
+muestreo aleatorio estratificado, vamos a utilizar como estimador de la
+media poblacional el parámetro $$\hat{\bar{X_h}}=\hat{\theta}$$
+
+Para estimar la varianza de $$\hat{\theta}$$ tenemos diferentes métodos:
+Semimuestras Reiteradas, Jackknife y Bootstrap.
+
+*I. Semimuestras Reiteradas.*
+
+El estimador de la varianza se calcula como:
+$$\hat{V}(\hat{\theta})=
+\frac{1}{K}*\sum_{r=1}^{K} (\hat{\theta}_r-\hat{\theta})^2$$
+
+Para obtener la estimación a través del método de semimuestras
+reiteradas (BRR), tenemos que usar la función svrepdesign:
+
+```{r}
+set.seed(123)
+mae_brr=as.svrepdesign(mae_affairs2, type="BRR")
+mae_brr
+
+mean_brr_mae=svymean(~naffairs, design=mae_brr)
+mean_brr_mae
+```
+
+*Resultado:* Utilizando el método de semimuestras reiteradas, el resultado 
+obtenido para la estimación de la media es el mismo que por el método
+exacto. Sin embargo, la desviación típica del estimador (SE, error de muestreo
+o error estándar del estimador), es ligeramente inferior. Podemos obtener la 
+estimación de la varianza del estimador elevando el resultado al cuadrado:
+
+```{r}
+est_var_est_brr_mae=SE(mean_brr_mae)^2
+est_var_est_brr_mae
+```
+
+Se trata de una estimación por el hecho de que estamos tratando datos
+muestrales. En este ejemplo donde suponemos que los datos son
+poblacionales, se podría calcular la varianza del estimador.
+
+*II. Método Jackknife.*
+
+El estimador de la varianza se calcula como:
+$$\hat{V}_{JK}(\hat{\theta})=
+\frac{n-1}{n}*\sum_{j=1}^{n} (\hat{\theta}_j-\hat{\theta}_{(.)})^2$$
+donde $$\hat{\theta}_{(.)}=\frac{1}{n}*\sum_{j=1}^{n} \hat{\theta}_j$$
+
+```{r}
+mae_jkk=as.svrepdesign(mae_affairs2,type="JKn")
+mae_jkk
+
+mean_jkk_mae=svymean(~naffairs, mae_jkk)
+mean_jkk_mae
+```
+
+*Resultado:* En este caso, mediante el método de Jackknife, los resultados 
+obtenidos son los mismos que mediante la estimación de la media por el método
+exacto tanto para la media como para desvición típica. 
+Al ser SE la desviación típica del estimador (error de muestreo
+o error estándar del estimador), podemos obtener la estimación de la
+varianza del estimador elevando el resultado al cuadrado:
+
+```{r}
+est_var_est_jkk_mae=SE(mean_jkk_mae)^2
+est_var_est_jkk_mae
+```
+
+
+
+*III. Método Bootstrap:*
+
+El estimador de la varianza se calcula como:
+$$\hat{V}_{BOOT}(\hat{\theta})=
+\frac{1}{B-1}*\sum_{b=1}^{B} (\hat{\theta}_b^*-\hat{\theta}^*)^2$$
+donde $$\hat{\theta}^*=\frac{1}{B}*\sum_{b=1}^{B} \hat{\theta}_b^*$$
+
+```{r}
+set.seed(123)
+mae_bt=as.svrepdesign(mae_affairs2,type="bootstrap", replicates=100) 
+mean_bt_mae=svymean(~naffairs, mae_bt)
+mean_bt_mae
+```
+
+Y si calculamos la estimación de la varianza del estimador de la misma
+forma que en semimuestras reiteradas y Jackknife:
+
+```{r}
+est_var_est_bt_mae=SE(mean_bt_mae)^2
+est_var_est_bt_mae
+```
+
+*Resultado:* En el método Bootstrap, obtenemos una estimación de la varianza 
+del estimador de la media poblacional superior al resto de métodos empleados 
+anteriormente. Sin embargo, como no hemos analizados la normalidad de los datos
+no podemos determinar si el primer método usado es robusto o no. 
+
+
+**Conclusiones**
+
+En conclusión, a partir de una base de datos considerada como muestra, se han 
+calculados los tamaños poblacionales de cada estrato con el fin de poder 
+calcular la estimación de la media poblacional y la estimación de la varianza
+de dicha estimación. Para este cálculo se han utilizado tres métodos diferentes,
+obteniendo, mediante el método de semimuestras reiteradas, una menor estimación 
+y, mediante el método Jackknife, una estimación igual al considerado como
+el método exacto (svymean).  
+
+
+
+\clearpage
+
+```{=latex}
+\begin{center}
+\textbf{Cálculo del tamaño muestral}
+\end{center}
+```
+**Ejercicio 1** *En la situación contextualizada para el m.a.s. del
+ejercicio anterior y suponiendo que la cuasivarianza poblacional
+estimada en una muestra piloto es la cuasivarianza de la muestra y el
+tamaño poblacional es por 100000 el tamaño de la muestra. Calcular el
+mínimo tamaño muestral necesario para que el error máximo absoluto de
+muestreo sea de $e=2.5$.*
+
+Para la realización de esta práctica necesitamos un nuevo paquete:
+
+```{r}
+#install.packages("samplingbook")
+library(samplingbook)
+```
+
+En ejercicio 1 hemos tratado a los datos como poblacionales, y hemos
+extarído una muestra para estimar la media poblacional y poder
+compararla con el verdadero valor. En este ejercicio, se va a tener en
+cuenta que la base de datos "smoke" es una muestra piloto y se va a
+estimar la cuasivarianza poblacional, donde N va a ser el tamaño de la
+muestra \*100000, es decir, si $n=807$, entonces $N=80700000$.
+
+```{r}
+mas=svydesign(id=~1, data=smoke, fpc=~rep(80700000,807)) 
+media=svymean(~cigs,mas) #nos da también el valor de la desviación típica
+media
+```
+
+El resultado nos indica una desviación típica es de 0.483.
+
+A continuación, especificamos los diferentes parámetros:
+
+```{=tex}
+\begin{itemize}
+\item En e indicamos el error máximo deseado: $e=2.5$
+\item En s indicamos la estimación de la cuasidesviación típica: $s=0.483$
+\item Indicamos el tamaño de N si suponemos que la muestra se ha obtenido mediante m.a.s sin reemplazamiento: $N=80700000$
+\item En level indicamos el nivel de confianza (suponemos al 95\%).
+\end{itemize}
+```
+```{r}
+sample.size.mean(e=2.5,S=0.483,N=80700000,level=0.95)
+```
+
+*Resultado:* Para obtener un error máximo absoluto de muestreo de
+e=2.5, el mínimo tamaño muestral necesario ha de ser de $n=1$.
+
+**Conclusiones**
+
+En conclusión, a partir de una muestra aletoria simple sin
+reemplazamiento (m.a.s.) de la base de datos smoke, se ha obtenido el
+tamaño mínimo muestral para que el error absoluto sea como máximo de
+2.5.
+
+**Ejercicio 2** *En la situación contextualizada para el m.a.e. del
+ejercicio anterior y suponiendo que la cuasivarianza poblacional
+estimada en una muestra piloto es la cuasivarianza de la muestra y el
+tamaño poblacional es por 100000 el tamaño de la muestra. Calcular el
+mínimo tamaño muestral necesario para que el error máximo absoluto de
+muestreo sea de $e=4$ suponiendo: a) afijación proporcional y b) afijación
+óptima de Neyman.*
+
+```{r}
+#Para saber cuántos sujetos hay para cada estrato, partiendo de la variable 
+#"ratemarr":
+table(affairs1$ratemarr)
+```
+
+Tal y como hemos visto en el anterior ejercicio 2, el tamaño de cada
+estrato para la variable "ratemarr" es de:
+
+1.  16 sujetos que viven en un matrimonio infeliz.
+
+2.  66 sujetos consideran su matrimonio como un poco infeliz.
+
+3.  93 sujetos dicen vivir contentos con su matrimonio.
+
+4.  194 sujetos consideran su matirmonio como feliz.
+
+5.  Finalmente, 232 sujetos viven en un matirmonio muy feliz.
+
+Conociendo ya la información sobre el tamaño de los estratos, vamos a
+crear una nueva columna con el tamaño de cada estrato, lo cual va a
+facilitar cálculos más adelante. En este caso, el enunciado nos indica que el
+tamaño poblacional de cada estrato es el tamaño muestral multiplicado por 
+100000, por lo que cambiamos respecto al anterior ejercicio:
+
+```{r}
+affairs1$N =NA #así estamos creando una nueva columna con datos vacíos.
+summary(affairs1)
+
+#para rellenar la columna con información:
+N1=16*100000
+N2=66*100000
+N3=93*100000
+N4=194*100000
+N5=232*100000
+
+#Ahora vamos a asignar a cada elemento su correspondiente tamaño de la 
+#población:
+affairs1$N[affairs1$ratemarr==1]=N1
+affairs1$N[affairs1$ratemarr==2]=N2
+affairs1$N[affairs1$ratemarr==3]=N3
+affairs1$N[affairs1$ratemarr==4]=N4
+affairs1$N[affairs1$ratemarr==5]=N5
+
+#Para comprobar que está bien hecho, vamos a imprimir de forma aleatoria 
+#alguno de los elementos:
+affairs1[7,]
+affairs1[222,]
+affairs1[498,]
+```
+
+
+**Apartado a)** *Suponemos que el muestreo se ha hecho con afijación
+proporcional*
+
+El método de afijación propocional consiste en realizar el muestreo
+teniendo en cuenta únicamente el tamaño, tanto de la población como de
+cada estrato. Por lo tanto, el tamaño de cada estrato se calcula como:
+$$n_h=n\frac{N_h}{N}=n*W_h$$ , es decir, se calcula utilizando el peso
+de cada estrato por el tamaño de la muestra.
+
+```{r}
+#Calculamos las desviaciones típicas de cada estrato:
+sd_N1=sd(affairs1$naffairs[affairs1$ratemarr==1])
+sd_N2=sd(affairs1$naffairs[affairs1$ratemarr==2])
+sd_N3=sd(affairs1$naffairs[affairs1$ratemarr==3])
+sd_N4=sd(affairs1$naffairs[affairs1$ratemarr==4])
+sd_N5=sd(affairs1$naffairs[affairs1$ratemarr==5])
+
+#install.packages("samplingbook")
+library(samplingbook)
+
+#Primero tenemos que calcular el tamaño muestral para posteriormente conocer 
+#cuál será el tamaño de cada estrato:
+stratasize(e=0.9, Nh=c(N1,N2,N3,N4,N5),Sh=c(sd_N1,sd_N2,sd_N3,sd_N4,sd_N5), 
+           level=0.95, type="prop")
+```
+
+Usando la función strata size obtenemos un tamaño muestral de 43, pero como
+queremos conocer cuál es el tamaño de la muestra necesario en cada
+estrato.
+
+```{r}
+stratasamp(n=48,Nh=c(N1,N2,N3,N4,N5), type="prop")
+#Como la afijación es proporcional, no se requiere que se proporcionen las 
+#afijaciones. 
+```
+
+*Resultado:* En base a estos resultados, determinamos que, para un error de 0.95
+es necesario elegir a un sujeto que considere tener un matrimonio muy infeliz,
+5 sujetos que valoren su matrimonio como algo infeliz, 14 sujetos que digan
+estar contentos con su matrimonio, 15 sujetos que consideren tener un matrimonio
+feliz y 19 sujetos que valoren su matrimonio como muy feliz.
+Al ser un tipo de afijación proporcional, aquellos con un mayor peso en la 
+población son los que mayor peso tienen también en la muesta.
+
+
+**Apartado b)** *Suponemos que el muestreo se ha hecho con afijación de
+Neyman.*
+
+El método de afijación de Neyman consiste en realizar las muestras de
+forma proporcional al tamaño del estrato y a la variabilidad de la
+característica dentro de cada estrato. Por lo tanto, el tamaño de cada
+estrato se calcula como:
+$$n_h=n\frac{N_h*S_h}{\sum_{i=1}^L (N_j S_j)}=n*W_h$$ , donde $$S_h$$ indica 
+la variabilidad de cada estrato.
+
+```{r}
+stratasize(e=0.9, Nh=c(N1,N2,N3,N4,N5),Sh=c(sd_N1,sd_N2,sd_N3,sd_N4,sd_N5), 
+           level=0.95, type="opt")
+```
+
+El tamaño muestral necesario mediante este método será de 45, es decir, son 
+necesarios tres sujetos menos en el tamaño muestral para obtener el mismo error 
+que el requerido en el otro tipo de afijación.
+
+Calculamos cuál será el tamaño muestral necesario en cada estrato:
+
+```{r}
+stratasamp(n=45,Nh=c(N1,N2,N3,N4,N5),Sh=c(sd_N1,sd_N2,sd_N3,sd_N4,sd_N5), 
+           type="opt")
+#Como la afijación es type opt, necesito indicar el valor de las 
+#cuasidesviaciones típicas
+```
+
+*Resultado:* Observamos que el tamaño muestral:
+
+```{=tex}
+\begin{itemize}
+\item Se incrementa en una unidad para el primer estrato, es decir, para aquellos que valoran su matrimonio como muy infeliz.
+\item Se incrementa en tres sujetos la cantidad necesaria del segundo estrato.
+\item Se mantiene el mismo número de sujetos del estrato tres. 
+\item Disminuye en un sujeto la cantidad necesaria del cuarto estrato para el total muestral.
+\item Disminuye en cinco unidades el número de sujetos necesarios para la muestra que valoran su matrimonio como muy feliz.
+\end{itemize}
+```
+
+
+**Conclusiones**
+
+En conclusión, en función del tipo de afijación que utilicemos, el tamaño 
+necesario de cada estrato para alcanzar un error de $e=0.9$ va a variar. 
+Únicamente coincidirán ambos métodos de afijación cuando la cuasidesviación
+típica de todos los estratos sea la misma entre sí, teniendo una mayor 
+importancia el la propoción de cada estrato sobre el total de la población 
+(afijación proporiconal).
+
+
+***IMPORTANTE:*** El enunciado indica que el error debe ser de 4. Sin embargo, 
+tras haber comenzado el ejercicio siguiendo dicha indicación, el resultado
+obtenido era un tamaño muestral máximo de 3. Además, R Studio, de forma 
+automática, elige como mínimo una unidad de cada estrato para la muestra.
+En este ejercicio, no se podía realizar el muestreo con ninguno de los dos 
+métodos propuestos debido a que el número de estrato es superior al tamaño 
+muestral. Como consecuencia, se ha tenido que diminuir el error pedido con el
+fin de poder obtener un tamaño muestral superior.
+
+
+
+\clearpage
+
+```{=latex}
+\begin{center}
+\textbf{Ejercicios Teóricos}
+\end{center}
+```
+**Ejercicio** *Describe los cuatro métodos de estimación del total
+cuando se muestrea en el marco no depurado. Indica y demuestra
+matemáticamente la relación entre la varianza del estimador en el marco
+depurado y la varianza del estimador siguiendo cada uno de los cuatro
+métodos.*
+
+**Apartado 1)**Se desconoce N' y no se sustituyen aleatoriamente las
+unidades vacías que aparecen en la muestra ($X_1$).
+
+El estimador del total: $$\hat{X}_{1}=\frac{N}{n}\sum_{k\in s} x_k$$.
+Este estimador es insesgado.
+Su varianza es: $$V(\hat{X}_{1})=\frac{N(N-n)}{n}S'^2$$.
+La relación entre la varianza del estimador en el marco depurado y la varianza 
+del estimador del marco no depurado a demostrar es que:
+$${V(\hat{X}_{1})}\geq{V(\hat{X})}$$.
+
+Para demostrarlo, vamos a comparar ambas varianzas:
+$$\frac{V(\hat{X}_{1})}{V(\hat{X})}=
+\frac{\frac{N(N-n)}{n}S^2}{\frac{N'(N'-n)}{n}S'^2}=
+\frac{N(N-n)S^2}{N'(N'-n)S'^2}$$
+En este paso, suponemos tres ideas:
+```{=tex}
+\begin{itemize}
+\item Igualamos la cuasivarianza a la varianza $S^2=\sigma^2$ donde $\sigma^2=\frac{(1-W)S'^2 +W(1-W)\bar{X'}^2}{S'^2}$
+\item $N\approx{N-1}$
+\item $N'\approx{N'-1}$
+\end{itemize}
+```
+
+De estas ideas, podemos transformar la expresión matemática: 
+$$\frac{N(N-n)S^2}{N'(N'-n)S'^2}=
+\frac{N(N-n)}{N'(N'-n)}*\frac{(1-W)S'^2 +W(1-W)\bar{X'}^2}{S'^2}=
+\frac{N(N-n)}{N'(N'-n)}*[(1-W)+\frac{W(1-W)\bar{X'}^2}{S'^2}]=
+\frac{N(N-n)}{N'(N'-n)}*[(1-W)+(1+W*\frac{\bar{X'}^2}{S'^2})]$$
+
+Una vez llegados a este punto, recordamos la igualdad $$\frac{N'}{N}=1-W$$
+
+Sustituimos esta igualdad en la expresión anterior y obtenemos:
+
+$$\frac{N(N-n)}{N'(N'-n)}*[(1-W)+(1+W*\frac{\bar{X'}^2}{S'^2})]=
+\frac{N(N-n)}{N'(N'-n)}*[\frac{N'}{N}+(1+W*\frac{\bar{X'}^2}{S'^2})]=
+\frac{(N-n)}{(N'-n)}*(1+W*\frac{\bar{X'}^2}{S'^2})$$
+
+Aunque no conzocamos el número de unidades vacías, sí que sabemos que existen, 
+por lo que determinamos que $$N>{N'}$$. Al no sutituir las unidades
+vacías $$n>{n'}$$. Por lo tanto podemos determinar que $$(N-n)>(N'-n)$$
+y, por ende, $$\frac{(N-n)}{(N'-n)}>0$$. 
+
+Además, y por definición propia, $$W>1$$ y $$\frac{\bar{X'}^2}{S'^2}>0$$ al 
+estar ambas variables elevadas al cuadrado, por lo que 
+$$(1+W*\frac{\bar{X'}^2}{S'^2})>0$$.
+
+En conclusión, la varianza de $$V(\hat{X}_{1})$$ será mayor que la de 
+$$V(\hat{X})$$ cuanto mayor sea la proporción $W$, es decir, cuanto mayor sea
+el número de unidades vacías. 
+
+
+**Apartado 2)** Se desconoce N' y se sustituyen aleatoriamente las
+unidades vacías que aparecen en la muestra hasta seleccionar n no vacías
+($X_2$).
+
+El estimador del total: $$\hat{X}_{2}=\frac{N}{n}\sum_{k\in s} x_k$$
+Tiene sesgo positivo y su varianza es:
+$$V(\hat{X}_{2})=\frac{N^2(N'-n)}{N'n}S'^2$$.
+La relación entre la varianza del estimador en el marco depurado y la varianza 
+del estimador del marco no depurado es:
+$$\frac{V(\hat{X}_{2})}{V(\hat{X})}=
+\frac{\frac{N^2(N'-n)}{N'n}S'^2}{\frac{N'(N'-n)}{n}S'^2}=
+\frac{N^2(N'-n)nS'^2}{N'^2(N'-n)nS'^2}=\frac{N^2}{N'^2}\geq1$$
+
+**Apartado 3)**Se conoce N' y no se sustituyen aleatoriamente las
+unidades vacías que aparecen en la muestra ($X_3$).
+
+El estimador del total: $$\hat{X}_{3}=\frac{N'}{n'}\sum_{k\in s} x_k$$ es 
+insesgado.
+Su varianza es: $$V(\hat{X}_{3})=\frac{N'(N-n)}{n}S'^2$$.
+La relación entre la varianza del estimador en el marco depurado y la varianza 
+del estimador del marco no depurado a demostrar es que:
+$${V(\hat{X}_{1})}\geq{V(\hat{X}_{3})}\geq{V(\hat{X})}$$.
+Para demostrarlo, vamos a comparar ambas varianzas:
+$$\frac{V(\hat{X}_{3})}{V(\hat{X})}=
+\frac{\frac{N'(N-n)}{n}S'^2}{\frac{N'(N'-n)}{n}S'^2}=
+\frac{(N-n)}{(N'-n)}$$
+
+Al conocer N', determinamos que $$N>{N'}$$ y al no sutituir las unidades
+vacías $$n>{n'}$$. Por lo tanto podemos determinar que $$(N-n)>(N'-n)$$
+y, por ende, $$\frac{(N-n)}{(N'-n)}>0$$. 
+Además, tal y como se ha demostrado en el primer apartado: 
+$${V(\hat{X}_{1})}\geq{V(\hat{X})}$$.
+
+La única diferencia que presenta con esta tercera situación es que, en
+ese caso, se deconocía N'. Sin embargo, como ahora conocemos el tamaño
+del marco depurado, la incertidumbre es menor:
+$${V(\hat{X}_{1})}\geq{V(\hat{X_3})}$$.
+
+En conclusión, podemos determinar que:
+$${V(\hat{X}_{1})}\geq{V(\hat{X}_{3})}\geq{V(\hat{X})}$$
+
+**Apartado 4)** Se conoce N' y se sustituyen aleatoriamente las unidades
+vacías que aparezcan en la muestra hasta obtener n no vacías ($X_4$).
+
+El estimador del total: $$\hat{X}_{4}=\frac{N'}{n}\sum_{k\in s} x_k$$ es
+insesgado y su varianza es: $$V(\hat{X}_{4})=\frac{N'(N'-n)}{n}S'^2$$.
+La relación entre la varianza del estimador en el marco depurado y la
+varianza del estimador del marco no depurado es:
+$$\frac{V(\hat{X}_{4})}{V(\hat{X})}=
+\frac{\frac{N'(N'-n)}{n}S'^2}{\frac{N'(N'-n)}{n}S'^2}=1$$
+La varianza es la misma la del marco sin depurar que la del marco
+depurado $X_4$.

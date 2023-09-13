@@ -1,0 +1,957 @@
+---
+title: "SERIES TEMPORALES, DATOS PANEL Y AJUSTE ESTACIONAL Y DE CALENDARIO"
+output: html_notebook
+---
+
+## Ejercicio práctico
+
+### Curso 2022/2023
+
+#### EJERCICIO 1. - Ajustar un modelo ARIMA a la serie mensual del Índice de Producción Industrial. Especificar, en una tabla como la que se indica a continuación, la secuencia de modelos que ajustarías para tratar de conseguir, de forma justificada, ruido blanco. Para ello ten en cuenta los siguientes pasos:
+
+**a.  Estacionariedad en media y/o varianza. Sugerir la transformación que considerarías más adecuada para tratar la serie.**
+**b.  Especificar en el campo "Modelo" el descriptor del modelo (por ejemplo, ARMA (p,q), ARIMA(p,d,q), SARIMA(p,d,q)x(P,D,Q)s, (+μ), etc.).**
+**c.  Especificar en el campo 'Justificación' la(s) razón(es) que condujo a sugerir dicho modelo a partir de los resultados observados en el modelo ajustado en el paso anterior (por ejemplo, gráfico de la FAS, gráfico de la FAP, posible violación de la condición de estacionariedad, algún contraste asociado a los parámetros, etc.).**
+
+El Índice de Producción Industrial (IPI) mide la evolución mensual de la actividad productiva de las ramas industriales, es decir, de las industrias extractivas, manufactureras y de producción y distribución de energía eléctrica, agua y gas y, por primera vez para la base 2010, también la división 36: Captación, depuración y distribución de agua, de la sección E de la CNAE-2009.
+
+Este indicador refleja la evolución conjunta de la cantidad y de la calidad, eliminando la influencia de los precios.
+
+Para la obtención del IPI se realiza una encuesta continua que investiga cada mes más de 11.500 establecimientos, en los que se obtiene información de productos representativos de todas las ramas de actividad.
+
+```{r}
+#En primer lugar vamos a activar todos los paquetes necesarios para la práctica:
+#para leer las bases de datos en excel
+#install.packages("readxl") 
+library(readxl)
+#para trabajar con series temporales
+#install.packages("lmtest")
+library(lmtest)
+#install.packages("tseries") 
+library(tseries)
+#install.packages("caschrono") 
+library(caschrono)
+#install.packages("forecast")
+library(forecast)
+
+#A continuación, vamos a leer los datos de la serie IPI, guardándola en 
+#un objeto:
+setwd("/Users/elsabuenoalonso/Desktop/apuntes/master/año 1/2o subcuatri
+      /series temporales/ENTREGAS/ENTREGA ELENA")
+library(readxl)
+IPI_ej = read_excel("Ejercicio1.xlsx",col_names = FALSE)
+IPIseries_ejercicio = ts(IPI_ej, frequency=12, start=c(2000,1)) 
+IPIseries_ejercicio
+
+#Dibujamos ahora la serie para empezar a determinar un modelo
+plot.ts(IPIseries_ejercicio, xlab="Años", ylab="Índice")
+```
+
+Viendo este primer gráfico podemos determinar que es una serie estacional, es decir, la serie presenta en cada año, de forma periódica, subidas y bajadas de forma regular. Estos picos que presentan parecen ser los meses de agosto de cada año, sin embargo, estos agostos son cada vez son menos "agostos", esto es, la amplitud del intervalo (variabilidad) cada vez es menos. Esto se debe a que, actualmente las fábricas no cierran en agosto, a diferencia de lo que ocurría al inicio de la serie analizada. Por lo tanto, al ser una serie estacional, no es estacionaria en media y ni en varianza. Asimismo, presenta cierta tendencia, aunque ésta no es constante a lo largo de la misma: primero es creciente, luego disminuye con la crisis del año 2008 y finalmente, a partir del año 2012 aproximadamente, empieza a subir debido a que el país comienza a salir de dicha crisis.
+
+```{r}
+#Antes de ajustar ningún modelo, vamos a representar de forma gráfica tanto su 
+#FAP como su FAS para poder tener una base de la que partir:
+acf(IPIseries_ejercicio, lag.max = 50)
+pacf(IPIseries_ejercicio, lag.max = 50)
+```
+
+Como podemos observar en su FAS, ésta decrece de forma lenta, lo que indica que es necesario aplicar una diferencia con el fin de hacer estacionaria en media dicha serie. Además, se aprecia claramente una estacionalidad.
+
+Nuestro objetivo es obtener una serie que no se vea afectada por el efecto tiempo, para lo que necesitamos emplear diferentes herramientas con el fin de tener una serie estacionaria en media (media constante), estacionaria en varianza (amplitud de intervalos constante y alrededor del valor de la media) y desestacionalizada (ningún efecto de calendario). Por lo tanto los modelos a utilizar son los modelos ARIMA (p,d,q)(P,D,Q)s, también conocidos como los modelos SARIMA (p,d,q)(P,D,Q).
+
+Primeramente, vamos a determinar si los datos son normales o no:
+
+```{r}
+qqnorm(IPIseries_ejercicio); qqline(IPIseries_ejercicio)
+shapiro.test(IPIseries_ejercicio)
+jarque.bera.test(IPIseries_ejercicio)
+```
+
+Para determinar la normalidad tenemos varios métodos, tanto gráficos como numéricos. Dentro de los gráficos encontramos el QQ-PLOT. En este gráfico, los datos relativos a la serie parecen distribuirse según una normal, aunque por las colas, los valores se alejan de la línea recta, por lo que dichos valores no siguen una distribución normal. De entre los métodos numéricos, podemos utilizar los test de Shapiro-Wilk y Jarque-Bera. Esto test tienen como hipótesis nula la aceptación de que los datos analizados se distribuyen según una normal. En este caso, en ambos estamos rechazando H0 al haber un p-valor inferior al nivel de significación fijado (α = 0, 05), es decir, rechazamos que los datos se distribuyan según una normal. En conclusión, tanto el método gráfico como los numéricos empleados para el análisis de la distribución de los datos, nos indican que éstos no siguen una normal. Por lo tanto, al ajustar la serie para su estacionariedad en varianza, se usará el test de Koenker-Basser.
+
+##### *PARTE I. AJUSTE DE LA SERIE.*
+
+[SERIE ESTACIONARIA EN VARIANZA]{.underline}
+
+Una serie será estacionaria en varianza si, a medida que los retardos crecen, la variabilidad de los mismos no varía. Para determinar esta hipótesis, y en base a que los datos no siguen una distribución normal, se utiliza el test de Koenker-Basser con hipótesis nula de homocedasticidad (es lo que buscamos, pues indica estacionariedad en varianza):
+
+```{r}
+#Test de Koenker-Basser
+bptest(lm(IPIseries_ejercicio ~ seq(length(IPIseries_ejercicio))), 
+       studentize = T)
+```
+
+Como el p-valor es inferior al nivel de significación fijado (α = 0, 05), estamos rechazando la hipótesis nula, por lo que determinamos que los datos presentan heterocedasticidad. Este resultado confirma nuestra hipótesis creada en análisis de la gráfica original, es decir, existen intervalos con diferentes amplitudes a medida que los valores se van incrementando.
+
+Una vez establecido que los datos no siguen una distribución normal y que son heterocedásticos, procedemos a hacer la serie estacionaria en varianza, para lo que vamos a utilizar la transformación de Box-Cox:
+
+```{r}
+#Determinamos el valor de lambda, pues en función de ello, deberemos bien 
+#aplicar logaritmos, bien dividiremos entre dicho valor la serie:
+lambda1= BoxCox.lambda(IPIseries_ejercicio, method = "guerrero", lower = -1, 
+                       upper = 1) 
+lambda2 = BoxCox.lambda(IPIseries_ejercicio, method = "loglik", lower = -1, 
+                        upper = 1)
+approxLambda <- function(lambda){
+  seq(-1,1,.05)[which.min(abs(seq(-1,1,.05) - lambda)) ]  
+}
+
+valor_lambda1_guerrero=approxLambda(lambda1)
+valor_lambda1_guerrero
+valor_lambda2_loglik=approxLambda(lambda2)
+valor_lambda2_loglik
+
+```
+
+Ambos valores de lambda, obtenidos con diferentes métodos, dan valores similares, por lo que vamos a utilizar el que, comúnmente, aporta mejores resultados y este el lambda obtenido mediante el método de Guerrero. Este valor de lambda (-1) es distinto de 0, por lo que vamos a usar transformaciones de la familia de Box - Cox para poder obtener una serie estacionaria en varianza. Esta transformación consiste en dividir el valor de la serie entre el valor de lambda, quitando así el efecto de la variabilidad:
+
+```{r}
+#Primero vamos a representar gráficamente para ver la serie antes de aplicar 
+#la transformación:
+IPI_timeseries=IPIseries_ejercicio
+ts.plot(BoxCox(IPI_timeseries, lambda = valor_lambda1_guerrero), xlab="Año",
+        ylab="Índice - Box Cox")
+
+#A continuación, aplicamos la transformación de Box - Cox:
+lambda_ejercicio=valor_lambda1_guerrero
+IPI_timeseries.t = BoxCox(IPI_timeseries, lambda_ejercicio)
+
+#Finalmente, representamos de nuevo la serie ya transformada y vemos en la 
+#FAS y FAP si la serie es ya estacionaria en varianza o es necesario realizar 
+#más transformaciones:
+Acf(IPI_timeseries.t, frequency(IPI_timeseries.t))
+acf(IPI_timeseries.t, lag.max = 50)
+tsdisplay(IPI_timeseries.t)
+
+```
+
+Observando la FAS podemos ver que las autocorrelaciones disminuyen despacio. Por lo tanto, detectamos la presencia de raíces unitarias, indicador clave para indicarnos que es necesario realizar, al menos, una diferencia, bien sea en la parte estacional o en la parte regular para poder alcanzar nuestra serie objetivo. Además, se detectan lo mayores picos en correspondencia a la frecuencia estacional mensual (12, 24, 36, etc.). La serie estacionaria en varianza presenta tendencia y estacionalidad, por lo que es necesario eliminarlas para poder determinar el mejor modelo.
+
+Generalmente, el orden de aplicación de diferencias no suele ser determinante. Sin embargo, si los datos presentan un fuerte patrón estacional, es preferible aplicar, en primer lugar, diferencias estacionales, ya que podrían dar lugar a series estacionarias y no sería necesario volver a realizar una diferencia sobre la parte regular.
+
+Por lo tanto, vamos a realizar primeramente una diferencia estacional para desestacionalizar la serie y posteriormente, en caso de ser necesario, se aplicará una diferencia en la parte regular.
+
+[SERIE DESESTACIONALIZADA]{.underline}
+
+Una serie estará desestacionalizada cuando no se vea afectada por los efectos calendario, es decir, por las vacaciones, los años bisiestos, la Semana Santa... Para ello es necesario aplicar diferencias. Es importante determinar que, en este ejercicio, la estacionalidad es mensual, es decir, aparece una vez al año, como se puede ver de forma clara tanto en el gráfico original como en las diferentes FAS obtenidas a lo largo de esta práctica.
+
+```{r}
+# Aplicamos una diferencia a la parte estacional y lo representamos 
+#gráficamente:
+d12_IPI_timeseries.t= diff(IPI_timeseries.t, lag=12)
+Acf(d12_IPI_timeseries.t, frequency(d12_IPI_timeseries.t)*3)
+acf(d12_IPI_timeseries.t, lag.max = 50)
+tsdisplay(d12_IPI_timeseries.t)
+```
+
+Los picos mensuales que aparecían antes los momentos 12, 24, 36... han disminuido hasta casi desaparecer del todo. Además, la FAS decrece mucho más rápido que antes, por lo que determinamos que la serie "d12_IPI_timeseries.t" es una serie desestacionalidad mediante la aplicación de una sola diferencia, en término mensuales, en la parte estacional de la serie. Este resultado lo podemos comprobar mediante el comando de cálculo automático de diferencias:
+
+```{r}
+# La funcion nsdiffs() indica que solo hace falta una diferencia en la parte
+#estacional:
+nsdiffs(IPI_timeseries.t)
+nsdiffs(d12_IPI_timeseries.t) #diferencia sobre la serie ya diferenciada una 
+#vez de forma estacional
+```
+
+Como se ha mencionado antes, una vez aplicada la diferencia estacional, es necesario determinar si hay que realizar diferencias en la parte regular. Para resolver esta cuestión podemos utilizar el Test de Dickey Fuller. Este test consiste en, mediante un contraste de hipótesis, detectar si existen o no raíces unitarias en una serie, siendo, por lo tanto, su hipótesis nula, que el proceso tiene raíces unitarias y es necesario aplicar diferencias.
+
+```{r}
+#Aplicamos el test de Dickey - Fuller sobre la serie desestacionalizada para 
+#determinar si hay o no raíces unitarias:
+adf.test(d12_IPI_timeseries.t, alternative = "stationary")
+```
+
+Como el p-valor es ligeramente superior al nivel de significación fijado (α = 0, 05), estamos aceptando la hipótesis nula, es decir, el proceso tiene raíz unitaria y por tanto hay que aplicar diferencias. Sin embargo, al estar ligeramente por encima del nivel de significación, vamos a comprobarlo mediante el comando ndiffs:
+
+```{r}
+#La funcion ndiffs() nos indica el número de diferencias necesarias en la 
+#parte regular sobre la serie ya desestacionalizada:
+ndiffs(d12_IPI_timeseries.t)
+```
+
+En función de si nos basamos en el test de Dickey - Fuller o en el comando de cálculo automático de diferencias para series temporales, es necesario aplicar diferencias en la parte regular o no. Debido a esta dicotomía, en el apartado de selección final del modelo se crearán varios modelos, algunos con diferencias regulares y otros sin ella.
+
+Como no está muy claro si es necesario o no aplicar diferencias, vamos a crear una serie estacionaria en media para poder compararla con la diferenciada.
+
+[SERIE ESTACIONARIA EN MEDIA]{.underline}
+
+Una serie será estacionaria en media si no existe tendencia, lo cual se puede comprobar en el gráfico original de la serie. Por lo tanto, para conseguir que la serie sea estacionaria en media, tenemos que aplicar, mínimo, una diferencia a la parte regular (aquella que no está afectada por la estacionalidad).
+
+```{r}
+# Aplicamos una diferencia a la parte estacional y lo representamos 
+#gráficamente:
+d12_d1_IPI_timeseries.t= diff(IPI_timeseries.t)
+Acf(d12_d1_IPI_timeseries.t, frequency(d12_d1_IPI_timeseries.t)*3)
+acf(d12_d1_IPI_timeseries.t, lag.max = 50)
+tsdisplay(d12_d1_IPI_timeseries.t)
+```
+
+Los picos mensuales que aparecían antes los momentos 12, 24, 36... han disminuido, aunque no del todo, pues siguen estando presentes. Sin embargo, la FAS decrece de forma más rápida y, si nos fijamos en la gráfica original, ésta es más constante que la diferenciada únicamente de forma estacional. Por lo tanto, podemos determinar que la serie "d12_d1_IPI_timeseries.t" es una serie doblemente diferenciada (estacional y regular) y estacionaria tanto en media como en varianza.
+
+A partir de ahora, vamos a ir creando diferentes modelos para encontrar el que mejor se ajusta a la serie analizada.
+
+##### *PARTE II. DETERMINACIÓN DEL MODELO DE LA SERIE.*
+
+Para poder determinar el modelo que mejor se ajuste a la serie analizada es necesario establecer varios modelos y mediante la comparación de los mismos y de sus residuos iremos eliminando algunos y otros los guardaremos para poder compararlos dos a dos. Por lo tanto, los pasos a seguir son:
+
+1.  Determinamos un modelo, estableciendo los valores de (p,d,q)(P,D,Q) y (s=4).
+2.  Analizamos los residuos de cada modelo. Para ello, se analiza la posible correlación entre los mismos, su media y su normalidad.
+3.  Guardamos los modelos que cumplan los criterios para compararlos en posteriores etapas.
+
+```{r}
+#MODELO 1: ARIMA(p=1,d=0,q=1)(P=1,D=1,Q=1)s=12; lambda=-1 y observamos 
+#sus residuos:
+lambda_ejercicio=valor_lambda1_guerrero
+modelo1=Arima(y = IPIseries_ejercicio, order = c(1,0,1), seasonal = c(1,1,1), lambda = lambda_ejercicio)
+coeftest(modelo1)
+```
+
+Este primer modelo parece tener todos los coeficientes significativos excepto el P=1, que parece ser menos significativo que el resto. Si analizamos sus residuos:
+
+```{r}
+#Análisis de independencia de resiudos del modelo 1:
+residuos_modelos1=residuals(modelo1)
+Box.test(residuos_modelos1, type = "Ljung-Box", lag = 30, 
+         fitdf = sum(modelo1$arma[1:2]))
+```
+
+Como el p-valor es inferior al nivel de significación α = 0,05 estamos rechazando la hipótesis nula, es decir, los residuos no son independientes, lo cual es un signo de una posible presencia de outliers.
+
+```{r}
+#Representación gráfica residuos del modelo 1:
+tsdisplay(residuos_modelos1)
+```
+
+Si analizamos estos gráficos, podemos observar que parece existir una cierta aleatoriedad en los residuos de este primer modelo y que no existe estacionalidad, lo cual es un aspecto positivo. Sin embargo, la FAS y la FAP parecen decrecer lentamente.
+
+```{r}
+#Análisis de la media de resiudos del modelo 1:
+t.test(residuos_modelos1)
+```
+
+Como el p-valor es superior al nivel de significación α = 0,05 estamos aceptando la hipótesis nula de que los residuos tienen media 0, lo cual es positivo.
+
+```{r}
+#Análisis de normalidad de residuos del modelo 1:
+qqnorm(residuos_modelos1); qqline(residuos_modelos1)
+shapiro.test(residuos_modelos1)
+jarque.bera.test(residuos_modelos1)
+```
+
+Como el p-valor del test de Shapiro - Walk es inferior al nivel de significación α = 0,05 estamos rechazando la hipótesis nula, es decir, los residuos no se distribuyen de forma normal, lo cual es un signo de una posible presencia de outliers. Sin embargo, mediante el test de Jarque - Bera, estaríamos aceptando la normalidad. Debido a esta dicotomía, y basándonos en el gráfico QQ-plot, vamos a analizar otros modelos para poder mejorar estos resultados.
+
+```{r}
+#MODELO 2: ARIMA(p=1,d=1,q=1)(P=1,D=1,Q=1)s=12; lambda=-1 y observamos sus 
+#residuos:
+lambda_ejercicio=valor_lambda1_guerrero
+modelo2=Arima(y = IPIseries_ejercicio, order = c(1,1,1), seasonal = c(1,1,1), 
+              lambda = lambda_ejercicio)
+coeftest(modelo2)
+```
+
+Este segundo modelo parece tener el mismo comportamiento que sin la diferencia regular: todos los coeficientes significativos excepto el P=1. Si analizamos ahora sus residuos:
+
+```{r}
+#Análisis de independencia de resiudos del modelo 2:
+residuos_modelos2=residuals(modelo2)
+Box.test(residuos_modelos2, type = "Ljung-Box", lag = 30, 
+         fitdf = sum(modelo2$arma[1:2]))
+```
+
+Como el p-valor es inferior al nivel de significación α = 0,05 estamos rechazando la hipótesis nula, es decir, los residuos no son independientes, lo cual es un signo de una posible presencia de outliers.
+
+```{r}
+#Representación gráfica residuos del modelo 2:
+tsdisplay(residuos_modelos2)
+```
+
+Si analizamos estos gráficos, podemos observar que parece existir una cierta aleatoriedad en los residuos de este segundo modelo y que no existe estacionalidad, lo cual es un aspecto positivo. Sin embargo, los valores de la FAS y de la FAP parecen decrecer lentamente.
+
+```{r}
+#Análisis de la media de resiudos del modelo 2:
+t.test(residuos_modelos2)
+```
+
+Como el p-valor es superior al nivel de significación α = 0,05 estamos aceptando la hipótesis nula de que los residuos tienen media 0, lo cual es positivo.
+
+```{r}
+#Análisis de normalidad de residuos del modelo 2:
+qqnorm(residuos_modelos2); qqline(residuos_modelos2)
+shapiro.test(residuos_modelos2)
+jarque.bera.test(residuos_modelos2)
+```
+
+Como tanto el p-valor del test de Shapiro - Walk como el de Jarque - Bera son inferiores al nivel de significación α = 0,05 estamos rechazando la hipótesis nula en ambos casos, es decir, los residuos no se distribuyen de forma normal, lo cual es un signo de una posible presencia de outliers.
+
+De entre estos dos modelos, el segundo tiene mejores residuos, por lo que va a ser el modelo base a partir del cual vamos a ir modificando parámetros hasta encontrar el que mejor se ajuste a nuestra serie analizada:
+
+```{r}
+#MODELO 3: ARIMA(p=2,d=0,q=1)(P=0,D=1,Q=1)s=12; lambda=-1 y observamos 
+#sus residuos:
+lambda_ejercicio=valor_lambda1_guerrero
+modelo3=Arima(y = IPIseries_ejercicio, order = c(2,0,1), seasonal = c(0,1,1), 
+              lambda = lambda_ejercicio)
+coeftest(modelo3)
+```
+
+Este tercer modelo cuenta con coeficientes muy significativos, por lo que podría ser un modelo óptimo. Si analizamos ahora sus residuos:
+
+```{r}
+#Análisis de independencia de resiudos del modelo 3:
+residuos_modelos3=residuals(modelo3)
+Box.test(residuos_modelos3, type = "Ljung-Box", lag = 30, 
+         fitdf = sum(modelo3$arma[1:2]))
+```
+
+Como el p-valor es inferior al nivel de significación α = 0,05 estamos rechazando la hipótesis nula, es decir, los residuos no son independientes, lo cual es un signo que una posible presencia de outliers.
+
+```{r}
+#Representación gráfica residuos del modelo 3:
+tsdisplay(residuos_modelos3)
+```
+
+Si analizamos estos gráficos, podemos observar que parece existir una cierta aleatoriedad en los residuos de este tercer modelo y que no existe estacionalidad, lo cual es un aspecto positivo. Si comparamos estos gráficos con el del segundo modelo, la FAS y la FAP presentan un mejor comportamiento, pues disminuyen de una forma mucho más rápida que en la anterior opción.
+
+```{r}
+#Análisis de la media de resiudos del modelo 3:
+t.test(residuos_modelos3)
+```
+
+Como el p-valor es superior al nivel de significación α = 0,05 estamos aceptando la hipótesis nula de que los residuos tienen media 0, lo cual es positivo.
+
+```{r}
+#Análisis de normalidad de residuos del modelo 3:
+qqnorm(residuos_modelos3); qqline(residuos_modelos3)
+shapiro.test(residuos_modelos3)
+jarque.bera.test(residuos_modelos3)
+```
+
+A diferencia de los modelos anteriores, en este caso tenemos una dicotomía en base a la distribución de los errores. Según el test de Shapiro - Walk, el p-valor es inferior al nivel de significación α = 0,05, por lo que estamos rechazando la hipótesis nula, es decir, los residuos no se distribuyen de forma normal, lo cual es un signo de una posible presencia de outliers. Sin embargo, mediante el test de Jarque - Bera, el p-valor es superior al nivel de significación α = 0,05 y, por ende, aceptamos que los residuos sí se distribuyen como una normal. En cuanto al gráfico QQ-plot, en un principio parece indicar que sí existe normalidad, pero si analizamos las colas, éstas se alejan de la recta, por lo que existe duda. Debido a esto, vamos a seguir analizando modelos.
+
+```{r}
+#MODELO 4: ARIMA(p=2,d=1,q=1)(P=0,D=1,Q=1)s=12; lambda=-1 y observamos 
+#sus residuos:
+lambda_ejercicio=valor_lambda1_guerrero
+modelo4=Arima(y = IPIseries_ejercicio, order = c(2,1,1), seasonal = c(0,1,1), 
+              lambda = lambda_ejercicio)
+coeftest(modelo4)
+```
+
+Este cuarto modelo destaca por tener el coeficiente del MA(1) no significativo, mientras que el resto de los coeficientes del modelo lo son. Si analizamos ahora sus residuos:
+
+```{r}
+#Análisis de independencia de residuos del modelo 4:
+residuos_modelos4=residuals(modelo4)
+Box.test(residuos_modelos4, type = "Ljung-Box", lag = 30, 
+         fitdf = sum(modelo4$arma[1:2]))
+```
+
+Como el p-valor es ligeramente inferior al nivel de significación α = 0,05 estamos rechazando la hipótesis nula, es decir, los residuos no son independientes, lo cual es un signo que una posible presencia de outliers.
+
+```{r}
+#Representación gráfica residuos del modelo 4:
+tsdisplay(residuos_modelos4)
+```
+
+Si analizamos estos gráficos, podemos observar que parece existir una cierta aleatoriedad en los residuos de este cuarto modelo y que no existe estacionalidad, lo cual es un aspecto positivo. Además, es interesante destacar que el comportamiento de los residuos en la FAS y FAP es el mejor hasta ahora analizado, al encontrarse casi todos dentro de las bandas límite, lo cual indica un comportamiento positivo de los mismos, aunque siguen decreciendo de forma algo lenta.
+
+```{r}
+#Análisis de la media de residuos del modelo 4:
+t.test(residuos_modelos4)
+```
+
+Como el p-valor es superior al nivel de significación α = 0,05 estamos aceptando la hipótesis nula de que los residuos tienen media 0, lo cual es positivo.
+
+```{r}
+#Análisis de normalidad de residuos del modelo 4:
+qqnorm(residuos_modelos4); qqline(residuos_modelos4)
+shapiro.test(residuos_modelos4)
+jarque.bera.test(residuos_modelos4)
+```
+
+Como tanto el p-valor del test de Shapiro - Walk como el de Jarque - Bera son bastante inferiores al nivel de significación α = 0,05 estamos rechazando la hipótesis nula en ambos casos, es decir, los residuos no se distribuyen de forma normal, lo cual es un signo de una posible presencia de outliers. Aunque los residuos no sean normales, este es, hasta el momento el modelo que mejor se ajusta a la serie analizada.
+
+```{r}
+#MODELO 5: ARIMA(p=2,d=1,q=0)(P=0,D=1,Q=1)s=12; lambda=-1 y observamos 
+#sus residuos:
+lambda_ejercicio=valor_lambda1_guerrero
+modelo5=Arima(y = IPIseries_ejercicio, order = c(2,1,0), seasonal = c(0,1,1), 
+              lambda = lambda_ejercicio)
+coeftest(modelo5)
+```
+
+Este quinto modelo no cuenta con la parte del MA(q=1) al no haber sido significativo en la alternativa anterior. Sin embargo, todos los coeficientes son significativos. Si analizamos ahora sus residuos:
+
+```{r}
+#Análisis de independencia de residuos del modelo 5:
+residuos_modelos5=residuals(modelo5)
+Box.test(residuos_modelos5, type = "Ljung-Box", lag = 30, 
+         fitdf = sum(modelo5$arma[1:2]))
+```
+
+Como el p-valor es ligeramente inferior al nivel de significación α = 0,05 estamos rechazando la hipótesis nula, es decir, los residuos no son independientes con un ligero matiz, lo cual es un signo de una posible presencia de outliers.
+
+```{r}
+#Representación gráfica residuos del modelo 5:
+tsdisplay(residuos_modelos5)
+```
+
+Si analizamos estos gráficos, podemos observar que parece existir una cierta aleatoriedad en los residuos de este quinto modelo y que no existe estacionalidad, lo cual es un aspecto positivo. Además, es interesante destacar que el comportamiento de los residuos en la FAS y FAP es el mejor hasta ahora analizado, al encontrarse casi todos dentro de las bandas límite, lo cual indica un comportamiento positivo de los mismos, aunque siguen decreciendo de forma algo lenta.
+
+```{r}
+#Análisis de la media de residuos del modelo 5:
+t.test(residuos_modelos5)
+```
+
+Como el p-valor es superior al nivel de significación α = 0,05 estamos aceptando la hipótesis nula de que los residuos tienen media 0, lo cual es positivo.
+
+```{r}
+#Análisis de normalidad de residuos del modelo 5:
+qqnorm(residuos_modelos5); qqline(residuos_modelos5)
+shapiro.test(residuos_modelos5)
+jarque.bera.test(residuos_modelos5)
+```
+
+Como tanto el p-valor del test de Shapiro - Walk como el de Jarque - Bera son bastante inferiores al nivel de significación α = 0,05 estamos rechazando la hipótesis nula en ambos casos, es decir, los residuos no se distribuyen de forma normal, lo cual es un signo de una posible presencia de outliers. Aunque los residuos no sean normales, este es, hasta el momento el modelo que mejor se ajusta a la serie analizada, pues tiene todos sus coeficientes significativos.
+
+```{r}
+#MODELO 6: ARIMA(p=2,d=0,q=0)(P=0,D=1,Q=1)s=12; lambda=-1 y observamos 
+#sus residuos:
+lambda_ejercicio=valor_lambda1_guerrero
+modelo6=Arima(y = IPIseries_ejercicio, order = c(2,0,0), seasonal = c(0,1,1), 
+              lambda = lambda_ejercicio)
+coeftest(modelo6)
+```
+
+Este sexto modelo tiene todos sus coeficientes significativos. Si analizamos ahora sus residuos:
+
+```{r}
+#Análisis de independencia de residuos del modelo 6:
+residuos_modelos6=residuals(modelo6)
+Box.test(residuos_modelos6, type = "Ljung-Box", lag = 30, 
+         fitdf = sum(modelo6$arma[1:2]))
+```
+
+Como el p-valor es inferior al nivel de significación α = 0,05 estamos rechazando la hipótesis nula, es decir, los residuos no son independientes con un ligero matiz, lo cual es un signo de una posible presencia de outliers.
+
+```{r}
+#Representación gráfica residuos del modelo 6:
+tsdisplay(residuos_modelos6)
+```
+
+Si analizamos estos gráficos, podemos observar que parece existir una cierta aleatoriedad en los residuos de este sexto modelo y que no existe estacionalidad, lo cual es un aspecto positivo. Sin embargo, si comparamos con las FAS y FAP de modelos anteriores, éste tiene un peor comportamiento en cuanto a sus residuos pues son varios los valores fuera de las bandas y la FAS decrece de forma mucho más lenta. Esto da indicios que puede no ser el mejor modelo de todos.
+
+```{r}
+#Análisis de la media de residuos del modelo 6:
+t.test(residuos_modelos6)
+```
+
+Como el p-valor es superior al nivel de significación α = 0,05 estamos aceptando la hipótesis nula de que los residuos tienen media 0, lo cual es positivo.
+
+```{r}
+#Análisis de normalidad de residuos del modelo 6:
+qqnorm(residuos_modelos6); qqline(residuos_modelos6)
+shapiro.test(residuos_modelos6)
+jarque.bera.test(residuos_modelos6)
+```
+
+A diferencia de los modelos anteriores, en este caso tenemos una dicotomía en base a la distribución de los errores. Según el test de Shapiro - Walk, el p-valor es inferior al nivel de significación α = 0,05, por lo que estamos rechazando la hipótesis nula, es decir, los residuos no se distribuyen de forma normal, lo cual es un signo de una posible presencia de outliers. Sin embargo, mediante el test de Jarque - Bera, el p-valor es superior al nivel de significación α = 0,05 y, por ende, aceptamos que los residuos sí se distribuyen como una normal. En cuanto al gráfico QQ-plot, en un principio parece indicar que sí existe normalidad, pero si analizamos las colas, sobre todo la cola superior, ésta se aleja de la recta, por lo que existe duda.
+
+**CONCLUSIONES:**
+
++--------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| MODELO                               | JUSTIFICACIÓN                                                                                                                                                                                                                                                                                                                                                        |
++======================================+======================================================================================================================================================================================================================================================================================================================================================================+
+| ARIMA (1,0,1)(1,1,1) s=12, lambda=-1 | Este ha sido el primer modelo planteado para comenzar el análisis, por lo que se ha partido de que todo será 1 excepto la diferencia en la parte regular. Esta excepción se ha hecho debido a que mediante el test de Dickey - Fuller se determinaba que eran necesarias diferencias regulares, mientras que el comando de cálculo automático indicaba lo contrario. |
++--------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ARIMA (1,1,1)(1,1,1) s=12, lambda=-1 | Este segundo modelo se ha realizado para ver cual de los dos, si este o el anterior, aportaba mejores resultados en función de si se incluía el diferencia regular en el modelo. Los resultados han sido mejores en este caso, pasando a ser el modelo base.                                                                                                         |
++--------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ARIMA (2,0,1)(0,1,1) s=12, lambda=-1 | Tomando los resultado del modelo anterior, se ha procedido a eliminar la parte estacional MA (Q=1) y aumentar la parte regular AR (p=2) al haber sido los coeficientes menos y más significativos, respectivamente. Debido a la dicotomía entre la aplicación de diferencias regulares, se ha planteado el modelo tanto con diferencia como sin ella.                |
++--------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ARIMA (2,1,1)(0,1,1) s=12, lambda=-1 | Este cuarto modelo se ha realizado con el fin de conocer si la aplicación de la diferencia afectaba en mayor medida al comportamiento de los residuos o no. Los resultados obtenidos mediante este modelo han sido los mejores de los modelos planteados.                                                                                                            |
++--------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ARIMA (2,1,0)(0,1,1) s=12, lambda=-1 | Partiendo de que en el modelo cuarto la parte MA(q=1) no era significativa, en este quinto modelo se ha eliminado. La diferencia regular se mantiene y los residuos se comportan mejor que antes, aunque siguen sin ser normales ni independientes.                                                                                                                  |
++--------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ARIMA (2,0,0)(0,1,1) s=12, lambda=-1 | Finalmente, con el fin de determinar si el modelo sin la parte MA(q=1) y sin diferencia regular presentaba mejores resultados que el anterior, se ha establecido este último modelo. Los resultados, sobre todo visibles en la FAS y FAP, no han aportado mejoras a lo obtenido anteriormente.                                                                       |
++--------------------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+En conclusión, en la tabla se muestran los diferentes modelos analizados en esta parte de la práctica y las razones por las que los parámetros se han ido modificando con el fin de encontrar el mejor modelo posible, siempre siguiendo el principio de parsimonia. En un primer instante, determinamos que este modelo hace referencia al quinto: ARIMA (2,1,0)(0,1,1) con s=12 y lambda=-1. Este modelo es un modelo estacionario en media y en varianza al que se le han aplicado dos diferencias (una regular y otra estacional), por lo que cumple con los criterios base para ser considerado como candidato a modelo final. Sin embargo, este puede no ser el modelo elegido finalmente, pues la siguiente etapa (validación del modelo), consiste en determinar si lo que queda de la serie tras haber modelizado correctamente es ruido blanco o no.
+
+[*NOTA ACLARATORIA:*]{.underline} *en este ejercicio de la práctica se habían calculado dos lambdas (-1 y -0.95). Para simplificar el análisis de la serie y el desarrollo de la práctica, se han analizado los modelos teniendo en cuenta, únicamente, el valor lambda=-1. Este valor, recordamos, se había calculado utilizado el método de Guerrero, método que suele aportar mejores resultados. Todos los modelos calculados y analizados anteriormente también se pueden hacer para lambda=-0.95 y lambda=0.*
+
+#### EJERCICIO 2.- Añadir a la tabla anterior una columna que muestre los p-valores finales que contrastan la hipótesis de ruido blanco asociado a las 30 primeras autocorrelaciones simples (test de Ljung-Box). A un nivel de significación α = 0,05,¿es ruido blanco? De no ser así, sugerir cómo modificar la parte AR o MA para conseguirlo. Escribir en una última columna de la tabla la ecuación del modelo final propuesto junto con las estimaciones de sus parámetros y su p-valor. Detallar si se cumplen las condiciones de estacionariedad, invertibilidad, significatividad a un nivel α = 0, 05 y ausencia de correlación entre los parámetros implicados en el modelo.
+
+La tercera etapa del proceso de análisis y determinación de modelos para series temporales es la validación de los mismos, es decir, mediante herramientas de estudio de los residuos y criterios de selección de modelos, se debe llegar a la elección de un modelo final. Este modelo final debe ser ruido blanco, esto es, si el modelo se ha ajustado correctamente mediante la aplicación de diferencias para desestacionalizar la serie y hacerla estacionaria en media, y la metodología de Box - Cox para ser estacionaria en varianza, y los parámetros se han estimado adecuadamente, el resultado debe ser unos residuos incorrelados, normales, aleatorios, de media cero y sin estacionalidad.
+
+En esta segunda parte de la práctica vamos a analizar mediante Ljung Box estos residuos para todos los modelos planteados anteriormente con el fin de obtener el mejor modelo para la serie analizada.
+
+```{r}
+#MODELO 1: ARIMA(p=1,d=0,q=1)(P=1,D=1,Q=1)s=12, lambda=-1:
+cor.arma(modelo1)
+tsdiag(modelo1)
+Box.test.2(residuos_modelos1,
+           nlag = c(6,12,18,24,30),
+           type="Ljung-Box")
+```
+
+Al analizar la tabla de correlaciones existentes entre los parámetros, éstas son bajas entre la mayoría de los parámetros. El mayor valor se encuentra entre la parte estacional: AR(P=1) y MA(Q=1), pero al no encontrarse cerca de la unidad, podemos dar como válida esta correlación.
+
+En cuanto a los residuos, si recordamos sus características, éstos eran correlados, aleatorios, de media cero y desestacionalizados, mientras que, en relación con su normalidad, existían dudas. Mediante el análisis de sus correlaciones, los p-valores de los residuos para los primeros 30 momentos son 0, lo que quieren decir que son muy pequeños, tal y como se pueden ver en el gráfico "p values for Ljung - Box statistic". Al ser inferiores al nivel de significación α = 0,05, podemos deducir que este modelo no es bueno para la serie IPI analizada.
+
+```{r}
+#MODELO 2: ARIMA(p=1,d=1,q=1)(P=1,D=1,Q=1)s=12, lambda=-1:
+cor.arma(modelo2)
+tsdiag(modelo2)
+Box.test.2(residuos_modelos2,
+           nlag = c(6,12,18,24,30),
+           type="Ljung-Box")
+```
+
+Al analizar la tabla de correlaciones existentes entre los parámetros, éstas son bajas entre la mayoría de los parámetros. Los mayores valores los encontramos dentro de la parte regular y dentro de la parte estacional: AR(p=1) con MA(q=1) y AR(P=1) con MA(Q=1), pero al no encontrarse cerca de la unidad, podemos dar como válidas estas correlaciones.
+
+En cuanto a los residuos, si recordamos sus características, éstos eran correlados, aleatorios, de media cero, desestacionalizados y normales. Mediante el análisis de sus correlaciones, los p-valores de los residuos para los primeros 30 momentos están muy cercanos al cero. Estos p-valores tan pequeños se pueden ver en el gráfico "p values for Ljung - Box statistic", por lo que, al ser inferiores al nivel de significación α = 0,05, podemos deducir que este modelo no es bueno para la serie IPI analizada por significativos que sean sus coeficientes como vimos en el ejercicio 1.
+
+```{r}
+#MODELO 3: ARIMA(p=2,d=0,q=1)(P=0,D=1,Q=1)s=12, lambda=-1:
+cor.arma(modelo3)
+tsdiag(modelo3)
+Box.test.2(residuos_modelos3,
+           nlag = c(6,12,18,24,30),
+           type="Ljung-Box")
+```
+
+Al analizar la tabla de correlaciones existentes entre los parámetros, éstas son altas entre la mayoría de los parámetros. Los únicos parámetros con correlaciones bajas son los relativos al AR(p=2) y MA(q=1) con la parte estacional MA(Q=1). El resto de correlaciones se encuentran cerca del valor 1, por lo que este modelo lo podemos dar por no válido. Aunque tenga coeficientes significativos, al estar éstos correlados, no son buenos para predecir (fin último del modelo).
+
+En cuanto a los residuos, si recordamos sus características, éstos eran correlados, aleatorios, de media cero y desestacionalizados, mientras que, en relación con su normalidad, existían dudas. Mediante el análisis de sus correlaciones, los p-valores de los residuos para los primeros 30 momentos son 0, lo que quieren decir que son muy pequeños, tal y como se pueden ver en el gráfico "p values for Ljung - Box statistic". Al ser inferiores al nivel de significación α = 0,05, podemos deducir que este modelo no es bueno para la serie IPI analizada.
+
+```{r}
+#MODELO 4: ARIMA(p=2,d=1,q=1)(P=0,D=1,Q=1)s=12, lambda=-1:
+cor.arma(modelo4)
+tsdiag(modelo4)
+Box.test.2(residuos_modelos4,
+           nlag = c(6,12,18,24,30),
+           type="Ljung-Box")
+```
+
+Al analizar la tabla de correlaciones existentes entre los parámetros, éstas son altas en la parte regular y bajas en la estacional. Debido a que la mayoría están cerca del valor cero, este modelo no es adecuado para la serie analizada.
+
+En cuanto a los residuos, si recordamos sus características, éstos eran correlados (aunque su p-valor era cercano a α = 0,05), aleatorios, de media cero, desestacionalizados y normales. Mediante el análisis de sus correlaciones, los p-valores de los residuos para los primeros 30 momentos son todos superiores al nivel de significación α = 0,05 (gráfico "p values for Ljung - Box statistic"). Estos valores nos llevan a aceptar la hipótesis nula del contraste de Ljung - Box sobre la incorrelación entre los residuos.
+
+En resumen, aunque los residuos estén incorrelados, los coeficientes del modelo sí que lo están, por lo que este modelo tampoco es válido para la serie IPI analizada en este ejercicio.
+
+```{r}
+#MODELO 5: ARIMA(p=2,d=1,q=0)(P=0,D=1,Q=1)s=12, lambda=-1:
+cor.arma(modelo5)
+tsdiag(modelo5)
+Box.test.2(residuos_modelos5,
+           nlag = c(6,12,18,24,30),
+           type="Ljung-Box")
+```
+
+Al analizar la tabla de correlaciones existentes entre los parámetros, éstas son bajas entre la mayoría de los parámetros. El mayor valor se encuentra entre la parte regular: AR(p=1) y MA(q=1), pero al no encontrarse cerca de la unidad, podemos dar como válida esta correlación.
+
+En cuanto a los residuos, si recordamos sus características, éstos eran correlados (aunque su p-valor era muy cercano a α = 0,05 por lo que podrían considerarse casi incorrelados), aleatorios, de media cero, desestacionalizados y normales. Mediante el análisis de sus correlaciones, los p-valores de los residuos para los primeros 30 momentos son todos superiores al nivel de significación α = 0,05 (gráfico "p values for Ljung - Box statistic"). Estos valores nos llevan a aceptar la hipótesis nula del constraste de Ljung - Box sobre la incorrelación entre los residuos.
+
+Por lo tanto, este es el mejor modelo que se ajusta a la serie IPI: ni los coeficientes ni los residuos se encuentran correlados. Además, en este modelo, los errores se comportan de forma mucho mejor que en el resto, tal y como se puede comprobar mediante el análisis de los gráficos de los residuos estandarizados y de la FAS de los residuos. Igualmente, vamos a analizar el último modelo.
+
+```{r}
+#MODELO 6: ARIMA(p=2,d=0,q=0)(P=0,D=1,Q=1)s=12, lambda=-1:
+cor.arma(modelo6)
+tsdiag(modelo6)
+Box.test.2(residuos_modelos6,
+           nlag = c(6,12,18,24,30),
+           type="Ljung-Box")
+```
+
+Al analizar la tabla de correlaciones existentes entre los parámetros, éstas son bajas entre la mayoría de los parámetros. El mayor valor se encuentra entre la parte regular: AR(p=1) y MA(q=1), y, al encontrarse cerca de la unidad, podemos determinar que este modelo no es válido.
+
+En cuanto a los residuos, si recordamos sus características, éstos eran correlados, aleatorios, de media cero y desestacionalizados, mientras que, en relación con su normalidad, existían dudas. Mediante el análisis de sus correlaciones, los p-valores de los residuos para los primeros 30 momentos son 0, lo que quieren decir que son muy pequeños, tal y como se pueden ver en el gráfico "p values for Ljung - Box statistic". Al ser inferiores al nivel de significación α = 0,05, podemos deducir que este modelo no es bueno para la serie IPI analizada.
+
+Para terminar, vamos a utilizar los criterios de Akaike (AIC) y Schwarz (BIC) para comparar los modelos. Según estos indicadores, el mejor modelo será aquel que tenga un menor valor de AIC y de BIC:
+
+```{r}
+#Criterio Akaike (AIC):
+AIC(modelo1)
+AIC(modelo2)
+AIC(modelo3)
+AIC(modelo4)
+AIC(modelo5)
+AIC(modelo6)
+```
+
+En base a este criterio, el mejor modelo sería el quinto: ARIMA (2,1,0)(0,1,1)s=12
+
+```{r}
+#Criterio de Schwarz (BIC):
+BIC(modelo1)
+BIC(modelo2)
+BIC(modelo3)
+BIC(modelo4)
+BIC(modelo5)
+BIC(modelo6)
+```
+
+En base a este criterio, el mejor modelo sería el quinto: ARIMA (2,1,0)(0,1,1)s=12
+
+**CONCLUSIÓN:**
+
+Una vez analizado todos los residuos y los criterios de selección de modelos, todos los resultados nos llevan a un mismo resultados: el modelo que mejor se ajusta a nuestra serie es un ARIMA (2,1,0)(0,1,1)s=12:
+
++--------------------------------------+----------------------------+------------------------------------------------------+
+| MODELO FINAL                         | P-VALOR DE LOS RESIDUOS    | ESTIMACIÓN DE LOS PARÁMETROS DEL MODELO              |
++======================================+============================+======================================================+
+| ARIMA (2,1,0)(0,1,1)s=12, lambda= -1 |         Retard    p-value  |           Estimate Std. Error  z value  Pr(>|z|)     |
+|                                      |     [1,]      6 0.53536609 |     ar1  -0.907448   0.055649 -16.3066 < 2.2e-16 *** |
+|                                      |     [2,]     12 0.51168320 |     ar2  -0.549989   0.055734  -9.8681 < 2.2e-16 *** |
+|                                      |     [3,]     18 0.07188138 |     sma1 -0.775160   0.047738 -16.2379 < 2.2e-16 *** |
+|                                      |     [4,]     24 0.07242668 |                                                      |
+|                                      |     [5,]     30 0.13637580 |                                                      |
++--------------------------------------+----------------------------+------------------------------------------------------+
+
+Este modelo cumple con los requisitos necesarios:
+
+-   [Modelo estacionario en media]{.underline} mediante la aplicación de diferencias regulares (d=1), tal y como indicada el test de Dickey - Fuller para raíces unitarias.
+-   [Modelo estacionario en varianza]{.underline} mediante la transformación de Box - Cox (cociente de la serie entre el valor de lambda) para un lambda=-1.
+-   [Modelo desestacionalizado]{.underline} mediante la aplicación de diferencias en la parte estacional (D=1), tal y como dedujimos al principio y como nos indicaba el comando automático.
+-   [Los residuos son ruido blanco:]{.underline} normales, aleatorios, incorrelados, de media cero y desestacionalizados. Además, todos sus p-valores son superiores al nivel de significación α = 0,05.
+
+Al haber conseguido un buen ajuste y ruido blanco, a un nivel de significación α = 0,05, no es necesario modificar la parte AR o MA del modelo para conseguirlo. Dicho modelo quedaría:
+
+![](images/Captura%20de%20pantalla%202023-01-01%20a%20las%2013.55.19.png){width="471"}
+
+Asimismo, habría que analizar la presencia de posibles outliers que puedan influir en el comportamiento de la serie y, por ende, en sus residuos. En el caso de haberlos y ser significativos, su inclusión en el modelo podría aportar mejores resultados.
+
+#### EJERCICIO 3.- Elige el mejor modelo que se ajuste a la serie de datos del ejercicio 3 (no es necesario justificar el modelo elegido) y a continuación busca 2 outliers. Sabiendo que los datos se corresponden con el "Índices de Comercio al por Menor" proporciona la siguiente información:
+
+-   **Fecha outlier 1: Tipo (AO, LS, TC); p-Valor Outlier; Justificación (si existe)**
+-   **Fecha outlier 2: Tipo (AO, LS, TC); p-Valor Outlier; Justificación (si existe)**
+
+El Índice de Comercio al por Menor (ICM) tiene como objetivo conocer la evolución de las ventas y el empleo en el sector del comercio minorista en España y cumplir con las exigencias que establece EUROSTAT en el estudio coyuntural relativo a este sector. La información se recoge de una muestra de 12.500 empresas ubicadas en todo el territorio nacional, de las que se obtienen datos por cuestionario, teléfono, fax o web, de las ventas brutas mensuales y del número de ocupados referido al último día de cada mes. Las ventas brutas son el total facturado por la empresa en concepto de productos vendidos en el ejercicio de su actividad incluido el IVA. El número de ocupados está formado por el número total de personas que trabajan en la empresa en una fecha determinada contribuyendo a la producción de bienes y servicios. Incluye tanto el personal remunerado como el no remunerado.
+
+```{r}
+#En primer lugar vamos a leer los datos y guardar la serie:
+setwd("/Users/elsabuenoalonso/Desktop/apuntes/master/año 1/2o subcuatri
+      /series temporales/ENTREGAS/ENTREGA ELENA")
+library(readxl)
+ICM_ej = read_excel("Ejercicio_3.xlsx",col_names = FALSE)
+ICMseries = ts(ICM_ej, frequency=12, start=c(2000,1)) 
+ICMseries
+
+#Dibujamos ahora la serie para empezar a determinar un modelo
+plot.ts(ICMseries)
+```
+
+Viendo este primer gráfico podemos determinar que es una serie estacional, es decir, la serie presenta en cada año, de forma periódica, subidas y bajadas de forma regular. Por lo tanto, al ser una serie estacional, no es estacionaria en media y ni en varianza. Asimismo, presenta cierta tendencia, en un primer lugar creciente hasta la crisis del año 2008, a partir de cuando comienza a decrecer. Finalmente, desde el año 2012, aproximadamente, la tendencia vuelve a ser creciente, aunque de forma más lenta.
+
+En este caso, vamos a determinar directamente el mejor modelo que se ajusta a esta nueva serie mediante el comando "autoarima":
+
+```{r}
+#Aplicamos el comando para conocer el modelo de forma automática:
+ICMarima=auto.arima(ICMseries, lambda = BoxCox.lambda(ICMseries))
+ICMarima
+```
+
+El modelo determinado por el comando "auto.arima" es un ARIMA (p=2,d=1,q=0)(P=0,D=1,Q=2) con s=12 y lambda=0.5821. En base a estos resultados podemos determinar que es:
+
+-   Una [serie estacionaria en media]{.underline} mediante la aplicación de una diferencia regular.
+
+-   Una [serie estacionaria en varianza]{.underline} mediante la transformación de Box Cox para un lambda=0.5821.
+
+-   Una [serie desestacionalizada]{.underline} gracias a la aplicación de una diferencia en la parte estacional.
+
+Mediante el análisis de sus residuos podremos comprobar si el resultado es ruido blanco o no. Para ello, como se ha hecho anteriormente, hay que estudiar la normalidad, correlación, independencia... En función de los resultados, podremos determinar la posible presencia de outliers en la serie:
+
+```{r}
+#Análisis de independencia de resiudos:
+residuos_ICM = residuals(ICMarima)
+Box.test(residuos_ICM, type = "Ljung-Box", lag = 30, 
+         fitdf = sum(ICMarima$arma[1:2]))
+```
+
+Como el p-valor es inferior al nivel de significación α = 0,05 estamos rechazando la hipótesis nula, es decir, los residuos no son independientes, lo cual es un signo de una posible presencia de outliers.
+
+```{r}
+#Análisis de la media de resdiuos:
+t.test(residuos_ICM)
+```
+
+Como el p-valor es superior al nivel de significación α = 0,05 estamos aceptando la hipótesis nula de que los residuos tienen media 0, lo cual es positivo.
+
+```{r}
+#Análisis de normalidad de residuos:
+qqnorm(residuos_ICM); qqline(residuos_ICM)
+shapiro.test(residuos_ICM)
+jarque.bera.test(residuos_ICM)
+```
+
+Como tanto el p-valor del test de Shapiro - Walk como el de Jarque - Bera son inferiores al nivel de significación α = 0,05 estamos rechazando la hipótesis nula en ambos casos, es decir, los residuos no se distribuyen de forma normal, lo cual es un signo de una posible presencia de outliers, tal y como habíamos deducido con el análisis de la independencia de residuos.
+
+```{r}
+# Procedemos a obtener a una estimación inicial robusta de la desviacion 
+#tipica de los residuos. Necesitamos una estimacion robusta por la presencia 
+#de outlier.
+sd_residuosICM= mad(residuos_ICM)
+
+# Definimos el intervalo de no atipicidad como: mean(residuos_ICM) +- Z_0.995 * 
+#sd_residuosICM y representamos la serie dentro del mismo para identificar 
+#los outliers:
+cotas_residuos= qnorm(0.995) * sd_residuosICM * c(-1,1)
+ts.plot(residuos_ICM)
+abline(h=cotas_residuos, lty = 3)
+```
+
+En este gráfico podemos ver que existen varios outliers, pues son aquellos datos que sobresalen de las cotas, tanto por encima como por debajo. Para poder analizarlos de forma más detenida, hay que identificarlos:
+
+```{r}
+# Conjunto de puntos atipicos
+which(residuos_ICM < cotas_residuos[1] | residuos_ICM > cotas_residuos[2]) 
+```
+
+Gracias al comando anterior hemos identificado que los outliers tienen lugar en esos instantes de tiempo, por lo que son necesarios tenerlos en cuenta para el análisis general de la serie.
+
+##### *PRIMER OUTLIER*
+
+Para buscar el primer outlier vamos a identificar cual de todos es el más significativo para el comportamiento de la serie:
+
+```{r}
+#Primer outlier significativo:
+outlier1= which.max(pmax(cotas_residuos[1]-residuos_ICM, residuos_ICM - 
+                           cotas_residuos[2]))
+outlier1
+```
+
+El primer outlier más significativo es el que se encuentra en la posición 153. Si miramos la base de datos, esta posición hace referencia al mes de septiembre del año 2012, lo cual es consistente con la situación del país en ese momento (comienzo de la salida de la crisis causada por el boom inmobiliario en el año 2008).
+
+**¿Qué tipo de outlier es?**
+
+Para poder determinar el tipo de outlier (AO, LS, TC) vamos a crear dos regresores, uno para un AO y otro para un LS:
+
+```{r}
+#Regresores para AO y LS:
+regresor1_AO = rep(0, length(residuos_ICM))
+regresor1_AO[outlier1] = 1
+regresor1_LS = c(rep(0, outlier1-1), rep(1, length(residuos_ICM) - 
+                                           outlier1 + 1))
+
+#Definimos dos nuevos modelos, incluyendo en cada uno un tipo de regresor para 
+#poder comparar estos modelos con el original y determinar tipo de outlier:
+lambda_ejercicio3=BoxCox.lambda(ICMseries)
+ICMarima_AO = Arima(y=ICMseries, order = c(2,1,0), seasonal = c(0,1,2), 
+                    lambda = lambda_ejercicio3, xreg = regresor1_AO)
+ICMarima_AO
+ICMarima_LS = Arima(y=ICMseries, order = c(2,1,0), seasonal = c(0,1,2), 
+                    lambda = lambda_ejercicio3, xreg = regresor1_LS)
+ICMarima_LS
+```
+
+Para comparar estos dos nuevos modelos con el modelo original, vamos a utilizar tanto el criterio BIC como la significatividad de los coeficientes:
+
+```{r}
+#Criterio BIC:
+BIC(ICMarima)
+BIC(ICMarima_AO)
+BIC(ICMarima_LS)
+```
+
+El BIC más bajo es el del modelo con un outlier tipo LS, es decir, un level shift.
+
+```{r}
+#Significatividad de los coeficientes:
+coeftest(ICMarima)
+coeftest(ICMarima_AO)
+coeftest(ICMarima_LS)
+```
+
+El modelo donde es más significativo el regresor es que cuenta con un outlier tipo LS, lo que corrobora la hipótesis establecida mediante el criterio BIC. Concluimos, por lo tanto, que el primer outlier tiene lugar en septiembre de 2012 y que es de tipo LS, es decir, un level shift.
+
+Ahora vamos a validar el modelo incluyendo este outlier, para lo que se analizan sus residuos:
+
+```{r}
+# Validamos el modelo ARIMA (p=2,d=1,q=0)(P=0,D=1,Q=2) con s=12 y LS[153]:
+xreg_LS = matrix(regresor1_LS, ncol = 1)
+colnames(xreg_LS) = paste("LS",outlier1,sep="")
+modelo_ICMarima_LS = Arima(y=ICMseries, order = c(2,1,0), seasonal = c(0,1,2), 
+                           lambda = lambda_ejercicio3, xreg = xreg_AO)
+
+#Analizamos la independencia de los residuos:
+residuos_ICMarima_LS = residuals(modelo_ICMarima_LS)
+Box.test(residuos_ICMarima_LS, type = "Ljung-Box", lag = 30, 
+         fitdf = sum(modelo_ICMarima_LS$arma[1:2]))
+```
+
+Como el p-valor es inferior al nivel de significación α = 0,05 estamos rechazando la hipótesis nula, es decir, los residuos no son independientes, lo cual es un signo que presencia de outliers.
+
+```{r}
+#Añadimos el test de Ljung - Box para las primeras 30 autocorrelaciones de 
+#los residuos del modelo ajustado:
+Box.test.2(residuos_ICMarima_LS,
+           nlag = c(6,12,18,24,30),
+           type="Ljung-Box")
+```
+
+Los p-valores de todos los momentos elegidos, excepto el primero, son inferiores al nivel de significación α = 0,05. Estos valores nos llevan a rechazar la hipótesis nula del contraste de Ljung - Box sobre la incorrelación entre los residuos, es decir, los residuos están correlados; resultado consistente con lo obtenido en el anterior comando.
+
+```{r}
+#Análisis de la media de reisudos:
+t.test(residuos_ICMarima_LS)
+```
+
+Como el p-valor es superior al nivel de significación α = 0,05 estamos aceptando la hipótesis nula de que los residuos tienen media 0, lo cual es positivo.
+
+```{r}
+#Análisis de normalidad de residuos:
+qqnorm(residuos_ICMarima_LS); qqline(residuos_ICMarima_LS)
+shapiro.test(residuos_ICMarima_LS)
+jarque.bera.test(residuos_ICMarima_LS)
+```
+
+El gráfico QQ - plot parece indicar que existe una normalidad en los residuos, pues se ajustan a la recta. Sin embargo, por la cola inferior los valores se alejan, lo que da lugar a preguntarse si realmente se ajustan a una normal o no. Como el p-valor de ambos test realizados (Shapiro - Wilk y Jarque - Bera) es inferior al nivel de significación α = 0,05 estamos rechazando la hipótesis nula, es decir, los residuos no se distribuyen de forma normal.
+
+Debido a que los residuos no cumplen con sus características necesarias para ser considerados como ruido blanco, vamos a seguir analizando la serie en busca de más outiers que puedan ayudar a mejorar los resultados.
+
+##### *SEGUNDO OUTLIER*
+
+Para el segundo outlier vamos a identificar cual de todos los restantes es el más significativo para el comportamiento de la serie:
+
+```{r}
+# Procedemos a obtener a una estimacion inicial robusta de la desviacion 
+#tipica de los residuos. Necesitamos una estimacion robusta por la presencia 
+#de outlier.
+sd_residuosICM_LS= mad(residuos_ICMarima_LS)
+
+# Definimos el intervalo de no atipicidad como: mean(residuos_ICMarima_LS) +- 
+#Z_0.995 * sd_residuosICM_LS y representamos la serie dentro del mismo para 
+#identificar los outliers:
+cotas_residuosICM_LS= qnorm(0.995) * sd_residuosICM_LS * c(-1,1)
+ts.plot(residuos_ICMarima_LS)
+abline(h=cotas_residuosICM_LS, lty = 3)
+```
+
+En este gráfico podemos ver que existen varios outliers, pues son aquellos datos que sobresalen de las cotas, tanto por encima como por debajo, pero son menores que los que obteníamos al principio. Para poder analizarlos de forma más detenida, hay que identificarlos:
+
+```{r}
+# Conjunto de puntos atipicos
+which(residuos_ICMarima_LS < cotas_residuosICM_LS[1] | residuos_ICMarima_LS > 
+        cotas_residuosICM_LS[2]) 
+```
+
+Gracias al comando anterior hemos identificado que los outliers tienen lugar en esos instantes de tiempo, por lo que son necesarios tenerlos en cuenta para el análisis general de la serie.
+
+```{r}
+#Segundo outlier significativo:
+outlier2= which.max(pmax(cotas_residuosICM_LS[1]-residuos_ICMarima_LS, 
+                         residuos_ICMarima_LS - cotas_residuosICM_LS[2]))
+outlier2
+```
+
+El segundo outlier más significativo es el que se encuentra en la posición 99. Si miramos la base de datos, esta posición hace referencia al mes de marzo del año 2008, lo cual es consistente con la situación del país en ese momento (comienzo de la crisis causada por el boom inmobiliario).
+
+**¿Qué tipo de outlier es?**
+
+Para poder determinar el tipo de outlier (AO, LS, TC) vamos a crear dos regresores, uno para un AO y otro para un LS:
+
+```{r}
+#Regresores para AO y LS:
+regresor2_AO = rep(0, length(residuos_ICMarima_LS))
+regresor2_AO[outlier2] = 1
+regresor2_LS = c(rep(0, outlier2-1), rep(1, length(residuos_ICMarima_LS) - 
+                                           outlier2 + 1))
+
+#Definimos dos nuevos modelos, incluyendo en cada uno un tipo de regresor para 
+#poder comparar estos modelos con el original y determinar tipo de outlier:
+lambda_ejercicio3=BoxCox.lambda(ICMseries)
+ICMarima_LS_AO = Arima(y=ICMseries, c(2,1,0), seasonal = c(0,1,2), 
+                       lambda = lambda_ejercicio3, xreg = cbind(xreg_LS, 
+                                                                regresor2_AO))
+ICMarima_LS_AO
+ICMarima_LS_LS = Arima(y=ICMseries, c(2,1,0), seasonal = c(0,1,2), 
+                       lambda = lambda_ejercicio3, xreg = cbind(xreg_LS, 
+                                                                regresor2_LS))
+ICMarima_LS_LS
+```
+
+Para comparar estos dos nuevos modelos, vamos a utilizar tanto el criterio BIC como la significatividad de los coeficientes:
+
+```{r}
+#Criterio BIC:
+BIC(ICMarima_LS_AO)
+BIC(ICMarima_LS_LS)
+```
+
+El BIC más bajo es el del modelo con un outlier tipo LS, es decir, un level shift.
+
+```{r}
+#Significatividad de los coeficientes:
+coeftest(ICMarima_LS_AO)
+coeftest(ICMarima_LS_LS)
+```
+
+El modelo donde es más significativo el regresor es que cuenta con un outlier tipo LS, lo que corrobora la hipótesis establecida mediante el criterio BIC. Concluimos, por lo tanto, que el segundo outlier tiene lugar en marzo de 2008 y que es de tipo LS, es decir, un level shift.
+
+Ahora vamos a validar el modelo incluyendo este outlier, para lo que se analizan sus residuos:
+
+```{r}
+# Validamos el modelo ARIMA (p=2,d=1,q=0)(P=0,D=1,Q=2) con s=12 y LS[99]:
+xreg_LS2 = cbind(xreg_LS, regresor2_LS)
+colnames(xreg_LS)[ncol(xreg_LS)] = paste("LS",outlier2,sep="")
+modelo_ICMarima_LS_LS = Arima(y=ICMseries, order = c(2,1,0), 
+                              seasonal = c(0,1,2), lambda = lambda_ejercicio3, 
+                              xreg = xreg_LS2)
+
+#Analizamos la independencia de los residuos:
+residuos_ICMarima_LS_LS = residuals(modelo_ICMarima_LS_LS)
+Box.test(residuos_ICMarima_LS_LS, type = "Ljung-Box", lag = 30, 
+         fitdf = sum(modelo_ICMarima_LS_LS$arma[1:2]))
+```
+
+Como el p-valor es inferior al nivel de significación α = 0,05 estamos rechazando la hipótesis nula, es decir, los residuos no son independientes, lo cual es un signo de una posible presencia de outliers.
+
+```{r}
+#Añadimos el test de Ljung - Box para las primeras 30 autocorrelaciones de 
+#los residuos del modelo ajustado:
+Box.test.2(residuos_ICMarima_LS_LS,
+           nlag = c(6,12,18,24,30),
+           type="Ljung-Box")
+```
+
+Los p-valores de todos los momentos elegidos, excepto el primero, son inferiores al nivel de significación α = 0,05. Estos valores nos llevan a rechazar la hipótesis nula del contraste de Ljung - Box sobre la incorrelación entre los residuos, es decir, los residuos están correlados; resultado consistente con lo obtenido en el anterior comando.
+
+```{r}
+#Análisis de la media de reisudos:
+t.test(residuos_ICMarima_LS_LS)
+```
+
+Como el p-valor es superior al nivel de significación α = 0,05 estamos aceptando la hipótesis nula de que los residuos tienen media 0, lo cual es positivo.
+
+```{r}
+#Análisis de normalidad de residuos:
+qqnorm(residuos_ICMarima_LS_LS); qqline(residuos_ICMarima_LS_LS)
+shapiro.test(residuos_ICMarima_LS_LS)
+jarque.bera.test(residuos_ICMarima_LS_LS)
+```
+
+El gráfico QQ - plot parece indicar que existe una normalidad en los residuos, pues se ajustan a la recta. Sin embargo, por la cola inferior los valores se alejan, lo que da lugar a preguntarse si realmente se ajustan a una normal o no. Como el p-valor de ambos test realizados (Shapiro - Wilk y Jarque - Bera) es inferior al nivel de significación α = 0,05 estamos rechazando la hipótesis nula, es decir, los residuos no se distribuyen de forma normal.
+
+Debido a que los residuos no cumplen con sus características necesarias para ser considerados como ruido blanco, se debería seguir analizando la serie y sus outliers hasta que los errores satisfagan todas sus condiciones.
+
+**CONCLUSIÓN:**
+
+```{r}
+#Calculamos los p-valores del modelo base para los dos momentos en los que 
+#hemos detectado los outliers significativos:
+Box.test.2(residuos_ICM,
+           nlag = c(99,153),
+           type="Ljung-Box")
+```
+
++----------------------------+------------------+----------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| FECHA OUTLIER              | TIPO OUTLIER     | P-VALOR OUTLIER            | JUSTIFICACIÓN OUTLIER                                                                                                                                                                                                                                                                                                                              |
++============================+==================+============================+====================================================================================================================================================================================================================================================================================================================================================+
+| 09/2012 - septiembre 2012. | Level Shift, LS. |      Retard    p-value     | Este primer outlier tuvo lugar en septiembre del año 2012. En ese momento, España se encontraba en las primeras semanas de la salida de la crisis causada por el boom inmobiliario en el año 2008, por lo que las expectativas de recuperación eran mayores, dando lugar a incrementos en ventas y creación de empleo en el comercio al por menor. |
+|                            |                  |     [2,]    153 0.02141186 |                                                                                                                                                                                                                                                                                                                                                    |
++----------------------------+------------------+----------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 03/2008 - septiembre 2012. | Level Shift, LS. |      Retard    p-value     | Este segundo outlier tuvo lugar en marzo del año 2008, momento en el que España (y Europa en general) comenzaron a entrar en recesión debido a la crisis que estaba teniendo lugar en Estados Unidos por la caída de del banco estadounidense Lehman Brothers.                                                                                     |
+|                            |                  |     [1,]     99 0.00021863 |                                                                                                                                                                                                                                                                                                                                                    |
++----------------------------+------------------+----------------------------+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+

@@ -1,0 +1,793 @@
+---
+title: "PRÁCTICA FINAL TMUES - MÁSTER EMOS"
+output:
+  html_document:
+    df_print: paged
+  word_document: default
+  pdf_document: default
+  html_notebook: default
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+##### ELSA BUENO ALONSO
+
+### [*PARTE I.*]{.underline}
+
+**Selecciona una base de datos de un tema que te resulte interesante.
+Puedes seleccionar una base de datos de R o de cualquier otra fuente.
+Esta base de datos debe tener al menos 500 observaciones y contener como
+mínimo una variable numérica.**
+
+```{r}
+#install.packages("wooldridge") #una vez que hemos dado a instalar el paquete, lo dejamos comentado
+library(wooldridge)
+data("census2000")
+#?census2000
+summary(census2000)
+```
+
+Vamos a trabajar con la base de datos "census2000" que contiene 29501
+observaciones sobre 6 variables:
+
+1.  state: state (ICPSR code)
+
+2.  puma: Public Use Microdata Area
+
+3.  educ: educational attainment
+
+4.  lweekinc: log(weekly income)
+
+5.  exper: years workforce experience
+
+6.  expersq: exper\^2
+
+Estas observaciones pertenecen a entrevistas realizadas a personas
+residentes en Estados Unidos. La variable con la que vamos a trabajar en
+esta primera parte de la práctica es "exper". Esta variable nos indica
+los años de experiencia con los que contaban los sujetos en el momento
+de realización de la encuesta.
+
+**Toma dos muestras de 50 observaciones una realizando un m.a.s. y la
+otra un m.a.s. con reemplazamiento. Calcula (utilizando las fórmulas
+vistas en clase y la función svytotal/ svymean del paquete survey):**
+
+**1.- Para el m.a.s. , calcula el estimador de la media poblacional para
+una variable numérica. Para dichas estimaciones, calcula el error de
+muestreo del estimador, del error relativo y su intervalo de
+confianza.**
+
+En primer lugar, se debe fijar una semilla, lo cual facilita fijar la
+componente aleatoria. De esa forma, siempre que ejecutemos un código
+relacionado con la muestra, obtendremos los mismos resultados.
+
+A continuación, creamos la función que nos va a crear una matriz que
+contiene la muestra de tamaño n=50. Como estamos en un muestreo
+aleatorio simple SIN reemplazamiento, tenemos que indicarlo en la
+función mediante ("FALSE"). Esta muestra se va a crear en base a las
+observaciones de la base de datos, por lo que únicamente vamos a obtener
+como resultado un vector que nos indica la posición de los elementos
+elegidos como muestra.
+
+Finalmente, creamos la muestra. Para ello indicamos la base de datos a
+emplear y la función creada para ello en el paso anterior. Así, el
+programa creará la muestra en base a los elementos que se encuentran en
+las posiciones obtenidas de forma aleatoria en el paso 2.
+
+```{r}
+#PASO 0: determinamos tamaño de la población (N) y de la muestra (n):
+N=29501
+n=50
+
+#PASO 1: fijamos la semilla.
+set.seed(7) 
+
+#PASO 2: creamos la función.
+censo=sample(1:N,n,replace=FALSE,prob=NULL)
+censo
+
+#PASO 3: creamos la muestra. 
+muestra1=census2000[censo,]
+muestra1
+```
+
+Esta última tabla nos muestra las observaciones seleccionadas al azar
+que componen nuestra muestra. Si queremos saber el porcentaje de la base
+de datos que está representada en esta muestra, calculamos la fracción
+de muestreo y el factor de elevación:
+
+```{r}
+N=29501
+n=50
+
+#Fracción de muestreo:
+fm=(n/N)
+fm
+
+#Factor de elevación:
+fe=N/n
+fe
+```
+
+Un 0,1685% de la población está representada en esta muestra. Este bajo
+porcentaje se debe al hecho de que la base de datos está conformada por
+cerca de 30000 observaciones, de entre las que hay que elegir 50. Es por
+esto que el factor de elevación nos muestra que cada individuo de la
+muestra representa a 590'02 sujetos de la población objetivo.
+
+##### *CÁLCULO DE ESTIMADORES MEDIANTE FÓRMULAS*
+
+Para el cálculo de estimadores, primero vamos a definir una variable que
+directamente tenga la información solicitada. No es un paso necesario,
+pero sirve para facilitar los pasos siguientes.
+
+```{r}
+#De la tabla con las observaciones que contiene la muestra, solo vamos a trabajar con la variable "exper":
+exper_census=muestra1$exper
+exper_census
+
+#Estimador de la media poblacional:
+est_media_pobl=(1/n)*sum(exper_census)
+est_media_pobl
+```
+
+Hemos obtenido que una estimación de la media de años de experiencia
+laboral de los sujetos de la base de datos (población objetivo) es de
+22'56 años.
+
+**a) Error de muestreo del estimador de la media poblacional.**
+
+```{r}
+#Estimación de la varianza del estimador:
+f=fm
+est_var_media_pobl=((1-f)/(n))*var(exper_census)
+est_var_media_pobl
+
+#Estimación del error de muestreo del estimador (raíz cuadrada de la varianza del estimador):
+est_em=sqrt(est_var_media_pobl)
+est_em
+```
+
+La estimación del error de muestreo que podamos cometer al realizar el
+análisis y extrapolar el resultado a la población objetivo es de 1'62
+años, es decir, podemos cometer un error de casi un año y medio de
+experiencia laboral, lo cual es un error muy bajo.
+
+**b) Error relativo del estimador de la media poblacional.**
+
+```{r}
+#Estimación del coeficiente de variación = estimador del error de muestreo / estimador de la media poblacional, pues suponemos estimador insesgado:
+est_cv=est_em/est_media_pobl
+est_cv
+```
+
+**c) Intervalo de confianza del estimador de la media poblacional.**
+
+```{r}
+#Suponemos nivel de confianza al 95% y distribución Normal:
+alpha=0.05
+cuantil= qnorm(1-(alpha/2),mean=0, sd=1,lower.tail = T)
+est_ic=c(est_media_pobl-cuantil*est_em,est_media_pobl+cuantil*est_em)
+est_ic
+```
+
+[INTERPRETACIÓN:]{.underline} de cada 100 muestras elegidas de forma
+aleatoria, en 95 de ellas, el verdadero valor de la media poblacional se
+encontrará entre los 19'38347 y 25'73653 años de experiencia laboral. Si
+recordamos el valor del estimador de la media poblacional (22'56 años),
+comprobamos que está dentro del intervalo.
+
+##### *CÁLCULO DE ESTIMADORES MEDIANTE PAQUETE SURVEY*
+
+Para poder comprobar nuestros resultados, se debe instalar el paquete
+"survey", que contiene los comandos necesarios para dichas
+comprobaciones:
+
+```{r}
+#install.packages("survey")
+library(survey)
+```
+
+En primer lugar, para obtener la estimación en función del tipo de
+diseño que hemos seguido antes para la muestra, utilizamos el comando #svydesign:
+
+```{r}
+muestra1_mas<-svydesign(id=~1, data=muestra1, fpc=~rep(N,n))
+```
+
+A continuación, mediante el comando #svymean podemos obtener la
+estimación de la media poblacional a partir de esa muestra:
+
+```{r}
+media_pobl<-svymean(~exper,muestra1_mas)
+media_pobl
+```
+
+Finalmente, el comando #confint nos permite obtener el intervalo de
+confianza para el estimador de la media poblacional:
+
+```{r}
+confint(media_pobl) #R supone un nivel de confianza del 95%
+```
+
+Como podemos comprobar, los resultados obtenidos mediante este paquete
+son los mismos que los realizados mediante las fórmulas estudiadas en
+clase.
+
+**2.- Para el m.a.s. y m.a.s.r. Estimador del total poblacional para una
+variable numérica. Para dichas estimaciones, calcula el error de
+muestreo del estimador, del error relativo y su intervalo de
+confianza.**
+
+I.  [M.A.S. sin reemplazamiento]{.underline}
+
+##### *CÁLCULO DE ESTIMADORES MEDIANTE FÓRMULAS*
+
+Para el cálculo de estimadores, primero vamos a definir una variable que
+directamente tenga la información solicitada. No es un paso necesario,
+pero sirve para facilitar los pasos siguientes.
+
+```{r}
+#De la tabla con las observaciones que contiene la muestra, solo vamos a trabajar con la variable "exper":
+exper_census=muestra1$exper
+exper_census
+
+#Estimador del total poblacional:
+est_total_pobl=(fe)*sum(exper_census)
+est_total_pobl
+```
+
+Hemos obtenido que una estimación del total de años de experiencia
+laboral de todos los sujetos de la base de datos (población objetivo) es
+de 665542'6 años.
+
+**a) Error de muestreo del estimador del total poblacional.**
+
+```{r}
+#Estimación de la varianza del estimador:
+f=fm
+est_var_total_pobl=N^2*((1-f)/(n))*var(exper_census)
+est_var_total_pobl
+
+#Estimación del error de muestreo del estimador (raíz cuadrada de la estimación de la varianza del estimador):
+est_em_total_pobl=sqrt(est_var_total_pobl)
+est_em_total_pobl
+```
+
+La estimación del error de muestreo que podamos cometer al realizar el
+análisis y extrapolar el resultado a la población objetivo es de
+47812'48 años, es decir, podemos cometer un error de 47812 años de
+experiencia laboral sobre el total de la población.
+
+**b) Error relativo del estimador del total poblacional.**
+
+```{r}
+#Estimación del coeficiente de variación = estimador del error de muestreo / estimador del total poblacional, pues suponemos estimador insesgado:
+est_cv_total_pobl=est_em_total_pobl/est_total_pobl
+est_cv_total_pobl
+```
+
+La estimación del error relativo para el estimador del total poblacional
+es igual que la estimación para la media poblacional.
+
+**c) Intervalo de confianza del estimador del total poblacional.**
+
+```{r}
+#Suponemos nivel de confianza al 95% y distribución Normal:
+alpha=0.05
+cuantil= qnorm(1-(alpha/2),mean=0, sd=1,lower.tail = T)
+est_ic_total_pobl=c(est_total_pobl-cuantil*est_em_total_pobl,est_total_pobl+cuantil*est_em_total_pobl)
+est_ic_total_pobl
+```
+
+[INTERPRETACIÓN:]{.underline} de cada 100 muestras elegidas de forma
+aleatoria, en 95 de ellas, el verdadero valor del total poblacional se
+encontrará entre los 571831'8 y 759253'3 años de experiencia laboral. Si
+recordamos el valor del estimador del total poblacional (665542'6 años
+de experiencia laboral), comprobamos que está dentro del intervalo.
+
+##### *CÁLCULO DE ESTIMADORES MEDIANTE PAQUETE SURVEY*
+
+Para poder comprobar nuestros resultados, se debe instalar el paquete
+"survey", que contiene los comandos necesarios para dichas
+comprobaciones:
+
+```{r}
+#install.packages("survey")
+library(survey)
+```
+
+En primer lugar, para obtener la estimación en función del tipo de
+diseño que hemos seguido antes para la muestra, utilizamos el comando #svydesign:
+
+```{r}
+muestra2_mas<-svydesign(id=~1, data=muestra1, fpc=~rep(N,n))
+```
+
+A continuación, mediante el comando #svytotal podemos obtener la
+estimación del total poblacional a partir de esa muestra:
+
+```{r}
+total_pobl<-svytotal(~exper,muestra2_mas)
+total_pobl
+```
+
+Finalmente, el comando #confint nos permite obtener el intervalo de
+confianza para el estimador del total poblacional:
+
+```{r}
+confint(total_pobl) #R supone un nivel de confianza del 95%
+```
+
+Como podemos comprobar, los resultados obtenidos mediante este paquete
+son los mismos que los realizados mediante las fórmulas estudiadas en
+clase.
+
+II. [M.A.S. con reemplazamiento]{.underline}
+
+Al igual que para el M.A.S. sin reemplazamiento, para el M.A.S. con
+reemplazamiento, vamos a fijar, en primer lugar, una semilla, lo cual
+facilita fijar la componente aleatoria. De esa forma, siempre que
+ejecutemos un código relacionado con la muestra, obtendremos los mismos
+resultados. En este caso, fijamos la misma semilla que para un M.A.S.
+sin reemplazamiento.
+
+A continuación, creamos la función que nos va a crear una matriz que
+contiene la muestra de tamaño n=50. Como estamos en un muestreo
+aleatorio simple CON reemplazamiento, tenemos que indicarlo en la
+función mediante ("TRUE"). Esta muestra se va a crear en base a las
+observaciones de la base de datos, por lo que únicamente vamos a obtener
+como resultado un vector que nos indica la posición de los elementos
+elegidos como muestra.
+
+Finalmente, creamos la muestra. Para ello indicamos la base de datos a
+emplear y la función creada para ello en el paso anterior. Así, el
+programa creará la muestra en base a los elementos que se encuentran en
+las posiciones obtenidas de forma aleatoria en el paso 2.
+
+```{r}
+#PASO 0: determinamos tamaño de la población (N) y de la muestra (n):
+N=29501
+n=50
+
+#PASO 1: fijamos la semilla.
+set.seed(7) 
+
+#PASO 2: creamos la función.
+censo_r=sample(1:N,n,replace=TRUE,prob=NULL)
+censo_r
+
+#PASO 3: creamos la muestra. 
+muestra2=census2000[censo_r,]
+muestra2
+```
+
+Esta última tabla nos muestra las observaciones seleccionadas al azar
+que componen nuestra muestra. Al haber fijado la misma semilla que para
+el muestreo sin reemplazamiento, las posiciones de los elementos
+seleccionados son las mismas.
+
+##### *CÁLCULO DE ESTIMADORES MEDIANTE FÓRMULAS*
+
+Para el cálculo de estimadores, primero vamos a definir una variable que
+directamente tenga la información solicitada. No es un paso necesario,
+pero sirve para facilitar los pasos siguientes.
+
+```{r}
+#De la tabla con las observaciones que contiene la muestra, solo vamos a trabajar con la variable "exper":
+exper_census2=muestra2$exper
+exper_census2
+
+#Estimador del total poblacional:
+est_total_pobl_r=(N/n)*sum(exper_census2)
+est_total_pobl_r
+```
+
+Hemos obtenido que una estimación del total de años de experiencia
+laboral de todos los sujetos de la base de datos (población objetivo) es
+de 665542'6 años, la cual coincide con el estimador del total
+poblacional para un m.a.s. sin reemplazamiento.
+
+**a) Error de muestreo del estimador del total poblacional.**
+
+```{r}
+#Estimación de la varianza del estimador:
+est_var_total_pobl_r=(N^2)*(var(exper_census2)/n)
+est_var_total_pobl_r
+
+#Estimación del error de muestreo del estimador (raíz cuadrada de la estimación de la varianza del estimador):
+est_em_total_pobl_r=sqrt(est_var_total_pobl_r)
+est_em_total_pobl_r
+```
+
+La estimación del error de muestreo que podamos cometer al realizar el
+análisis y extrapolar el resultado a la población objetivo es de
+47853'05 años, es decir, podemos cometer un error de 47853 años de
+experiencia laboral sobre el total de la población.
+
+**b) Error relativo del estimador del total poblacional.**
+
+```{r}
+#Estimación del coeficiente de variación = estimador del error de muestreo / estimador del total poblacional, pues suponemos estimador insesgado:
+est_cv_total_pobl_r=est_em_total_pobl_r/est_total_pobl_r
+est_cv_total_pobl_r
+```
+
+**c) Intervalo de confianza del estimador del total poblacional.**
+
+```{r}
+#Suponemos nivel de confianza al 95% y distribución Normal:
+alpha=0.05
+cuantil= qnorm(1-(alpha/2),mean=0, sd=1,lower.tail = T)
+est_ic_total_pobl_r=c(est_total_pobl_r-cuantil*est_em_total_pobl_r,est_total_pobl_r+cuantil*est_em_total_pobl_r)
+est_ic_total_pobl_r
+```
+
+[INTERPRETACIÓN:]{.underline} de cada 100 muestras elegidas de forma
+aleatoria, en 95 de ellas, el verdadero valor del total poblacional se
+encontrará entre los 571752'3 y 759332'8 años de experiencia laboral. Si
+recordamos el valor del estimador del total poblacional (665542'6 años
+de experiencia laboral), comprobamos que está dentro del intervalo.
+
+##### *CÁLCULO DE ESTIMADORES MEDIANTE PAQUETE SURVEY*
+
+Para poder comprobar nuestros resultados, se debe instalar el paquete
+"survey", que contiene los comandos necesarios para dichas
+comprobaciones:
+
+```{r}
+#install.packages("survey")
+library(survey)
+```
+
+En primer lugar, para obtener la estimación en función del tipo de
+diseño que hemos seguido antes para la muestra, utilizamos el comando #svydesign:
+
+```{r}
+muestra2_mas_r<-svydesign(id=~1, data=muestra2, weights = ~rep(N/n,n))
+```
+
+A continuación, mediante el comando #svytotal podemos obtener la
+estimación del total poblacional a partir de esa muestra:
+
+```{r}
+total_pobl_r<-svytotal(~exper,muestra2_mas_r)
+total_pobl_r
+```
+
+Finalmente, el comando #confint nos permite obtener el intervalo de
+confianza para el estimador del total poblacional:
+
+```{r}
+confint(total_pobl_r) #R supone un nivel de confianza del 95%
+```
+
+Como podemos comprobar, los resultados obtenidos mediante este paquete
+son los mismos que los realizados mediante las fórmulas estudiadas en
+clase.
+
+### [*PARTE II.*]{.underline}
+
+**Selecciona una base de datos que contenga al menos una variable
+numérica y una variable cualitativa que tenga sentido que defina
+estratos. Puede ser la misma o diferente que la del apartado anterior.**
+
+```{r}
+#install.packages("wooldridge") #una vez que hemos dado a instalar el paquete, lo dejamos comentado
+library(wooldridge)
+data_base=data("affairs")
+#?affairs
+summary(affairs)
+```
+
+En esta segunda parte de la entrega, la base de datos a emplear es
+"affairs". Esta base de datos contiene 601 observaciones sobre 19
+variables, siendo las más importantes:
+
+1.  id: identifier
+
+2.  male: =1 if male
+
+3.  age: in years
+
+4.  yrsmarr: years married
+
+5.  kids: =1 if have kids
+
+6.  relig: 5 = very relig., 4 = somewhat, 3 = slightly, 2 = not at all,
+    1 = anti
+
+7.  educ: years schooling
+
+8.  occup: occupation, reverse Hollingshead scale
+
+9.  ratemarr: 5 = vry hap marr, 4 = hap than avg, 3 = avg, 2 = smewht
+    unhap, 1 = vry unhap
+
+10. naffairs: number of affairs within last year
+
+11. affair: =1 if had at least one affair
+
+Estas observaciones pertenecen a una encuesta realizada por la revista
+"Psychology Today" y cuyos datos fueron utilizados por un profesor de la
+Universidad de Yale. Las variables con las que vamos a trabajar en esta
+segunda parte de la práctica son "naffairs" y "relig" como variables
+cuantitativa y cualitativa respectivamente.
+
+La primera nos indica el número de aventuras extramatrimoniales tenidas
+a lo largo del año anterior, mientras que la segunda hace referencia al
+nivel de religiosidad de la persona entrevistada. Al ser la variable
+"relig" una variable cualitativa, está dividida en 5 estratos, siendo el
+5 una persona muy religiosa y el 1 una persona antirreligiosa.
+
+Vamos a crear una nueva variable N que almacenará, junto al elemento, el
+tamaño de su estrato:
+
+```{r}
+#Vamos a eliminar las columnas que no necesitamos con el fin de poder visualizar mejor la información para la práctica:
+affairs1<-affairs[,-c(1,2,3,4,5,7,8,9,11,12,13,14,15,16,17,18,19)] #si ponemos "," estamos indicando que no modifique las filas
+affairs1
+
+#Para saber cuántos sujetos hay para cada estrato, partiendo de la variable "relig":
+table(affairs1$relig)
+```
+
+Una vez realizados los filtros necesarios, hemos llegado al tamaño de
+cada estrato para la variable "relig":
+
+1.  Hay 48 sujetos que son antirreligiosos.
+
+2.  164 sujetos son ateos, es decir, no creen en la religión.
+
+3.  129 sujetos son algo religiosos.
+
+4.  190 sujetos son religiosos.
+
+5.  Finalmente, 50 sujetos son muy religiosos.
+
+**Supón que esa base de datos se corresponde con la muestra obtenida
+utilizando un procedimiento de afijación proporcional, donde el tamaño
+de la población de cada estrato es el tamaño muestreado x 100000.**
+
+Conociendo ya la información sobre el tamaño de los estratos, vamos a
+crear una nueva columna con el tamaño de cada estrato, lo cual va a
+facilitar cálculos más adelante:
+
+```{r}
+affairs1$N =NA #así estamos creando una nueva columna con datos vacíos.
+summary(affairs1)
+
+#para rellenar la columna con información:
+N1=48*100000
+N2=164*100000
+N3=129*100000
+N4=190*100000
+N5=70*100000
+
+#Ahora vamos a asignar a cada elemento su correspondiente tamaño de la población:
+affairs1$N[affairs1$relig ==1]=N1
+affairs1$N[affairs1$relig==2]=N2
+affairs1$N[affairs1$relig==3]=N3
+affairs1$N[affairs1$relig==4]=N4
+affairs1$N[affairs1$relig==5]=N5
+
+summary(affairs1)
+
+#Para comprobar que está bien hecho, vamos a imprimir de forma aleatoria alguno de los elementos:
+affairs1[134,]
+affairs1[215,]
+affairs1[499,]
+```
+
+Ahora vamos a generar el diseño para el muestreo aleatorio
+estratificado:
+
+```{r}
+#install.packages("survey")
+library(survey)
+mae_affairs1=svydesign(id=~1,strata=~relig,data=affairs1,fpc=~N)
+mae_affairs1
+```
+
+**Calcula:**
+
+**1. Estimador de la media poblacional para una variable numérica. Para
+dichas estimaciones, calcula el error de muestreo del estimador, del
+error relativo y su intervalo de confianza. Así como, la estimación por
+estratos.**
+
+El estimador de la media poblacional lo obtenemos usando el comando
+"svymean"
+
+```{r}
+media_pobl_mae_affairs1=svymean(~naffairs, design = mae_affairs1)
+media_pobl_mae_affairs1
+```
+
+Se estima que, de entre los sujetos entrevistados, la media de aventuras
+extramatrimoniales en el último año ha sido de 1.4559.
+
+**a) Error de muestreo del estimador de la media poblacional.**
+
+La estimación del error de muestreo del estimador de la media
+poblacional será de 0.133 aventuras extramatrimoniales, tal y como
+observamos en el resultado del comando anterior en SE.
+
+**b) Error relativo del estimador de la media poblacional.**
+
+El coeficiente de variación o error relativo se calcula como el cociente
+entre la desviación típica (o error de muestreo) y la esperanza del
+estimador de la media poblacional. Suponemos este estimador como
+insesgado, por lo que la esperanza del estimador coincide con el
+estimador de la media poblacional:
+
+```{r}
+(0.133/1.4559)*100
+est_cv_media_pobl_mae_affairs1=SE(media_pobl_mae_affairs1)/media_pobl_mae_affairs1[[1]]
+est_cv_media_pobl_mae_affairs1
+```
+
+La estimación del error relativo será del 9.13%
+
+**c) El intervalo de confianza del estimador de la media poblacional.**
+
+```{r}
+#Para el intervalo de confianza:
+ic_media_pobl_mae_affairs1=confint(media_pobl_mae_affairs1)
+ic_media_pobl_mae_affairs1
+```
+
+[INTERPRETACIÓN:]{.underline} de cada 100 muestras elegidas de forma
+aleatoria, en 95 de ellas, el verdadero valor de la media poblacional se
+encontrará entre las 1.195155 y 1.716658 aventuras extramatrimoniales
+tenidas a lo largo del año anterior a la realización de la encuesta. Si
+recordamos el valor del estimador de la media poblacional (1.4559
+aventuras extramatrimoniales), comprobamos que está dentro del
+intervalo.
+
+**d) La estimación por estratos de la media poblacional.**
+
+Para hacer esto mismo, pero para cada estrato, usamos el comando "svyby"
+
+```{r}
+mae_estrato_media_pobl_affairs1=svyby(~naffairs, by=~relig, design = mae_affairs1, FUN=svymean)
+mae_estrato_media_pobl_affairs1
+```
+
+Se estima que los sujetos con un mayor nivel de religiosidad tienen, de
+media, menos aventuras extramatrimoniales que aquellos antirreligiosos o
+ateos: un 0.88 aventuras extramatrimoniales frente a las 2.58,
+respectivamente. Asimismo, podemos observar que este patrón se repite
+para el error de muestreo: los sujetos antirreligiosos tienen un mayor
+error (0.6) que los sujetos muy religiosos (0.3).
+
+Para el error relativo o coeficiente de variación, se calcula de igual
+forma que en apartados anteriores:
+
+```{r}
+est_cv_estrato_media_pobl_mae_affairs1=SE(mae_estrato_media_pobl_affairs1)/mae_estrato_media_pobl_affairs1
+est_cv_estrato_media_pobl_mae_affairs1
+```
+
+La estimación del error relativo del estimador del total poblacional
+será de esos valores para cada uno de los estratos, correspondiendo el
+primero al estrato 1 (antireligioso) y el último al estrato 5 (muy
+religioso).
+
+Si ahora calculamos los intervalos de confianza para el estimador de la
+media poblacional para cada uno de los estratos:
+
+```{r}
+#Para el intervalo de confianza:
+ic_mae_estrato_media_pobl_affairs1=confint(mae_estrato_media_pobl_affairs1)
+ic_mae_estrato_media_pobl_affairs1
+```
+
+Estos intervalos de confianza nos indican donde se encontrará el valor
+poblacional del número medio de aventuras extramatrimoniales tenidas por los sujetos de
+la muestra a lo largo del año anterior para cada uno de los estratos de
+nivel de religiosidad con una probabilidad del 95%.
+
+**2. Estimador del total poblacional para una variable numérica. Para
+dichas estimaciones, calcula el error de muestreo del estimador, del
+error relativo y su intervalo de confianza. Así como, la estimación por
+estratos.**
+
+El estimador del total poblacional lo obtenemos usando el comando
+"svytotal"
+
+```{r}
+total_pobl_mae_affairs1=svytotal(~naffairs, design = mae_affairs1)
+total_pobl_mae_affairs1
+```
+
+Se estima que el total de aventuras extramatrimoniales tenidas en el
+último año por los sujetos entrevistados ha sido de 87500000.
+
+**a) Error de muestreo del estimador del total poblacional.**
+
+La estimación del error de muestreo del estimador del total poblacional
+será de 7995639 aventuras extramatrimoniales, tal y como observamos en
+el resultado del comando anterior en SE.
+
+**b) Error relativo del estimador del total poblacional.**
+
+El coeficiente de variación o error relativo se calcula como el cociente
+entre la desviación típica (o error de muestreo) y la esperanza del
+estimador del total poblacional. Suponemos este estimador como
+insesgado, por lo que la esperanza del estimador coincide con el
+estimador del total poblacional:
+
+```{r}
+est_cv_total_pobl_mae_affairs1=SE(total_pobl_mae_affairs1)/total_pobl_mae_affairs1[[1]]
+est_cv_total_pobl_mae_affairs1
+```
+
+La estimación del error relativo será del 9.13%
+
+**c) El intervalo de confianza del estimador del total poblacional.**
+
+```{r}
+#Para el intervalo de confianza:
+ic_total_pobl_mae_affairs1=confint(total_pobl_mae_affairs1)
+ic_total_pobl_mae_affairs1
+```
+
+[INTERPRETACIÓN:]{.underline} de cada 100 muestras elegidas de forma
+aleatoria, en 95 de ellas, el verdadero valor del total poblacional se
+encontrará entre las 71828836 y 103171164 aventuras extramatrimoniales
+tenidas a lo largo del año anterior a la realización de la encuesta. Si
+recordamos el valor del estimador del total poblacional (87500000
+aventuras extramatrimoniales), comprobamos que está dentro del
+intervalo.
+
+**d) La estimación por estratos del total poblacional.**
+
+Para hacer esto mismo, pero para cada estrato, usamos el comando "svyby"
+
+```{r}
+mae_estrato_total_pobl_affairs1=svyby(~naffairs, by=~relig, design = mae_affairs1, FUN=svytotal)
+mae_estrato_total_pobl_affairs1
+```
+
+Se estima que los sujetos con un mayor nivel de religiosidad tienen
+menos aventuras extramatrimoniales que aquellos antirreligiosos o ateos:
+12400000 aventuras extramatrimoniales frente a las 6200000,
+respectivamente. A diferencia del apartado anterior para el estimador de
+la media poblacional, en el estimador del total poblacional, el error de
+muestreo no se comporta de forma similar al total poblacional, pues,
+aunque los más religiosos sigan teniendo un menor error de muestreo,
+este nivel de religiosidad y los antirreligiosos tienen errores de
+muestreo más bajos que el resto de estratos y similares entre sí. En
+este caso, son los ateos (estrato 2) los que presentan un mayor error de
+muestreo.
+
+Para el error relativo o coeficiente de variación, se calcula de igual
+forma que en apartados anteriores:
+
+```{r}
+est_cv_estrato_total_pobl_mae_affairs1=SE(mae_estrato_total_pobl_affairs1)/mae_estrato_total_pobl_affairs1
+est_cv_estrato_total_pobl_mae_affairs1
+```
+
+La estimación del error relativo del estimador del total poblacional
+será de esos valores para cada uno de los estratos, correspondiendo el
+primero al estrato 1 (antirreligioso) y el último al estrato 5 (muy
+religioso).
+
+Si ahora calculamos los intervalos de confianza para el estimador de la
+media poblacional para cada uno de los estratos:
+
+```{r}
+#Para el intervalo de confianza:
+ic_mae_estrato_total_pobl_affairs1=confint(mae_estrato_total_pobl_affairs1)
+ic_mae_estrato_total_pobl_affairs1
+```
+
+Estos intervalos de confianza nos indican donde se encontrará el valor
+poblacional del número total de aventuras extramatrimoniales tenidas por
+la muestra a lo largo del año anterior para cada uno de los estratos de
+nivel de religiosidad con una probabilidad del 95%.
+
+CONCLUSIÓN: tanto el para el estimador del total como de la media poblacional, el comportamiento es el mismo en la división de estratos: los sujetos más religiosos tienen menos aventuras extramatrimoniales que aquellos sujetos antirreligiosos 
